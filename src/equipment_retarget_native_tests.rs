@@ -1147,3 +1147,27 @@ fn unscaled_animation_at_small_overall_scale_does_not_lift_equipment_root() {
         assert!((output[0][7] - 0.2).abs() < 1e-6);
     }
 }
+
+#[test]
+fn skip_reports_each_equipment_stage_once() {
+    let mut seen = Vec::new();
+    assert!(first_report(&mut seen, (0x10, "capture-no-mappers"), 4));
+    assert!(!first_report(&mut seen, (0x10, "capture-no-mappers"), 4));
+    assert!(first_report(&mut seen, (0x10, "bind-mesh-skeleton"), 4));
+    assert!(first_report(&mut seen, (0x20, "capture-no-mappers"), 4));
+    assert_eq!(seen.len(), 3);
+}
+
+#[test]
+fn skip_report_memory_is_bounded_and_reports_again_after_clearing() {
+    let mut seen = Vec::new();
+    let stages = ["a", "b", "c"];
+    for stage in stages {
+        assert!(first_report(&mut seen, (1, stage), 3));
+    }
+    assert!(!first_report(&mut seen, (1, "a"), 3));
+    // A fourth key clears the full memory, so earlier keys report again.
+    assert!(first_report(&mut seen, (1, "d"), 3));
+    assert_eq!(seen, vec![(1, "d")]);
+    assert!(first_report(&mut seen, (1, "a"), 3));
+}
