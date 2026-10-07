@@ -1171,3 +1171,69 @@ fn skip_report_memory_is_bounded_and_reports_again_after_clearing() {
     assert_eq!(seen, vec![(1, "d")]);
     assert!(first_report(&mut seen, (1, "a"), 3));
 }
+
+#[test]
+fn mapper_trace_names_each_read_up_to_the_mapper() {
+    let mut heap = Heap::new();
+    let exporter = heap.alloc(0x180);
+    let holder = heap.alloc(16);
+    let relay = heap.alloc(0x80);
+    let relay_holder = heap.alloc(16);
+    let mapper = heap.alloc(0xA0);
+    heap.put(exporter + 0x50, holder);
+    heap.put(holder, relay);
+    heap.put(relay, TEST_BASE + 0x2B6EB88);
+    heap.put(relay + 0x50, relay_holder);
+    heap.put(relay_holder, mapper);
+    heap.put(mapper, TEST_BASE + MAPPER_VTABLE);
+    heap.put(exporter + 0x70, holder);
+    let trace = mapper_trace(exporter, TEST_BASE);
+    assert!(
+        trace.starts_with("heads=[+0x40=0x0 +0x48=0x0 +0x50="),
+        "{trace}"
+    );
+    assert!(
+        trace.contains(&format!(
+            "list+0x48: holder=0x{holder:X} provider=0x{relay:X} node=0x{relay:X} vtable=+0x2B6EB88 node=0x{mapper:X} vtable=+0x2B6FAC8 mapper"
+        )),
+        "{trace}"
+    );
+    // The second list reaches the same objects, which the search skips.
+    assert!(
+        trace.ends_with(&format!(
+            "list+0x68: holder=0x{holder:X} provider=0x{relay:X} node=0x{relay:X} seen"
+        )),
+        "{trace}"
+    );
+}
+
+#[test]
+fn mapper_trace_shows_where_a_failed_search_stops() {
+    let mut heap = Heap::new();
+    let exporter = heap.alloc(0x180);
+    let other = heap.alloc(16);
+    let holder = heap.alloc(16);
+    heap.put(exporter + 0x70, holder);
+    heap.put(holder, other);
+    heap.put(other, TEST_BASE + 0x10);
+    let trace = mapper_trace(exporter, TEST_BASE);
+    // A null holder makes `provider` unreadable, which fails the search.
+    assert!(
+        trace.contains("list+0x48: holder=0x0 provider=unreadable"),
+        "{trace}"
+    );
+    assert!(
+        trace.ends_with(&format!(
+            "list+0x68: holder=0x{holder:X} provider=0x{other:X} node=0x{other:X} vtable=+0x10 other"
+        )),
+        "{trace}"
+    );
+}
+
+#[cfg(not(feature = "diagnostics"))]
+#[test]
+fn default_build_never_builds_trace_messages() {
+    report_once_with(0x30, "capture-mapper-trace", || {
+        panic!("message built without diagnostics")
+    });
+}

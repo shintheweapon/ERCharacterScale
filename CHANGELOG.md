@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Diagnostics builds log, once per equipment and reason, why equipment retargeting leaves equipment on the native path.
+- Diagnostics builds also log, once per equipment, each pointer the mapper search reads, showing where a failed search stops.
 
 ## 2.55.1
 
