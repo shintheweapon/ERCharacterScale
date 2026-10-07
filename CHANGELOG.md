@@ -4,6 +4,7 @@
 
 - Diagnostics builds log, once per equipment and reason, why equipment retargeting leaves equipment on the native path.
 - Diagnostics builds also log, once per equipment, each pointer the mapper search reads, showing where a failed search stops.
+- Diagnostics builds name the first failed check when the mesh skeleton of captured equipment cannot be read.
 
 ## 2.55.1
 
