@@ -1260,3 +1260,39 @@ fn equipment_without_cloth_retargets_through_first_mapper() {
     fixture._heap.put(exporter + 0x70, holder);
     assert!(!REGISTRY.read().unwrap()[0].key.current(TEST_BASE));
 }
+
+fn bound_key(fixture: &NativeTest) -> Key {
+    refresh(fixture.character.address, 1.0, 1);
+    REGISTRY.read().unwrap()[0].key.clone()
+}
+
+#[test]
+fn mesh_skeleton_trace_reports_ok_for_a_readable_skeleton() {
+    let fixture = NativeTest::new();
+    let key = bound_key(&fixture);
+    let trace = mesh_skeleton_trace(&key);
+    assert!(trace.starts_with("count=4 skeleton=0x"), "{trace}");
+    assert!(trace.ends_with(" ok"), "{trace}");
+}
+
+#[test]
+fn mesh_skeleton_trace_names_a_singular_bind_matrix() {
+    let fixture = NativeTest::new();
+    let key = bound_key(&fixture);
+    let inverse = ptr(key.resource + 0x2F8).unwrap();
+    fixture._heap.put(inverse + 2 * 48, [0u8; 48]);
+    assert!(mesh_skeleton(&key).is_none());
+    let trace = mesh_skeleton_trace(&key);
+    assert!(trace.ends_with(" bone=2 singular"), "{trace}");
+}
+
+#[test]
+fn mesh_skeleton_trace_names_a_bad_parent() {
+    let fixture = NativeTest::new();
+    let key = bound_key(&fixture);
+    let bones = ptr(ptr(key.mappers[0] + 0x90).unwrap() + 8).unwrap();
+    fixture._heap.put(bones + 3 * 64 + 0x2C, 9i16);
+    assert!(mesh_skeleton(&key).is_none());
+    let trace = mesh_skeleton_trace(&key);
+    assert!(trace.ends_with(" bone=3 parent=9"), "{trace}");
+}

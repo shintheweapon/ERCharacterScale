@@ -5,6 +5,7 @@
 - Diagnostics builds log, once per equipment and reason, why equipment retargeting leaves equipment on the native path.
 - Diagnostics builds also log, once per equipment, each pointer the mapper search reads, showing where a failed search stops.
 - Retarget equipment that ships without cloth physics: an empty second mapper list no longer stops capture. In-game acceptance is pending.
+- Diagnostics builds name the first failed check when the mesh skeleton of captured equipment cannot be read.
 
 ## 2.55.1
 

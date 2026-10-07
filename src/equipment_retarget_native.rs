@@ -657,6 +657,81 @@ fn mesh_skeleton(key: &Key) -> Option<Vec<Bone>> {
     Some(result)
 }
 
+/// Diagnostics only: repeats the checks of `mesh_skeleton` in order and names
+/// the first that fails, or `ok`. Reads memory only.
+fn mesh_skeleton_trace(key: &Key) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    let Some(count) = pose::bytes::<4>(&read, key.resource + 0x1C).map(i32::from_le_bytes) else {
+        return "count=unreadable".to_string();
+    };
+    let _ = write!(out, "count={count}");
+    if count <= 0 || count as usize > pose::LIMIT {
+        out.push_str(" count-out-of-range");
+        return out;
+    }
+    let count = count as usize;
+    let Some(skeleton) = ptr(key.mappers[0] + 0x90) else {
+        out.push_str(" skeleton=unreadable");
+        return out;
+    };
+    let _ = write!(out, " skeleton=0x{skeleton:X}");
+    let Some(bones) = ptr(skeleton + 8) else {
+        out.push_str(" bones=unreadable");
+        return out;
+    };
+    // The qword after the bones pointer is logged raw: it may be their count.
+    let after = ptr(skeleton + 0x10).map_or_else(|| "unreadable".to_string(), |v| v.to_string());
+    let _ = write!(out, " bones=0x{bones:X} skeleton+0x10={after}");
+    let Some(reference) = ptr(key.resource + 0x2F8) else {
+        out.push_str(" reference=unreadable");
+        return out;
+    };
+    let _ = write!(out, " reference=0x{reference:X}");
+    let mut raw_bones = vec![0u8; count * 64];
+    let mut raw_bind = vec![0u8; count * 48];
+    if !read(bones, &mut raw_bones) {
+        out.push_str(" bones-read=failed");
+        return out;
+    }
+    if !read(reference, &mut raw_bind) {
+        out.push_str(" reference-read=failed");
+        return out;
+    }
+    let mut globals = Vec::with_capacity(count);
+    for i in 0..count {
+        let Some(inverse) = pose::affine(&raw_bind[i * 48..(i + 1) * 48]) else {
+            let _ = write!(out, " bone={i} affine");
+            return out;
+        };
+        if inverse.determinant().abs() < 1e-12 {
+            let _ = write!(out, " bone={i} singular");
+            return out;
+        }
+        globals.push(inverse.inverse());
+    }
+    for i in 0..count {
+        let bone = &raw_bones[i * 64..(i + 1) * 64];
+        let parent = i16::from_le_bytes(bone[0x2C..0x2E].try_into().unwrap());
+        if parent < -1 || parent as usize >= count && parent != -1 {
+            let _ = write!(out, " bone={i} parent={parent}");
+            return out;
+        }
+        let name_at = usize::from_le_bytes(bone[0x20..0x28].try_into().unwrap());
+        if pose::text(&read, name_at, true).is_none() {
+            let _ = write!(out, " bone={i} name");
+            return out;
+        }
+        let parent = (parent >= 0).then_some(parent as usize);
+        if pose::local(parent.map_or(globals[i], |p| globals[p].inverse() * globals[i])).is_none() {
+            let _ = write!(out, " bone={i} local");
+            return out;
+        }
+    }
+    out.push_str(" ok");
+    out
+}
+
 fn bind(key: Key, identity: Identity, generation: u64, scale: f64, force: bool) -> Option<Binding> {
     let equipment = key.equipment;
     let Some((source_identity, source_bones)) = pose::skeleton(&read, key.source_meta) else {
@@ -670,6 +745,12 @@ fn bind(key: Key, identity: Identity, generation: u64, scale: f64, force: bool) 
     let source_bones = crate::equipment_retarget::animation_reference(source_bones);
     let Some(raw_mesh) = mesh_skeleton(&key) else {
         report_skip(equipment, "bind-mesh-skeleton", format_args!("unreadable"));
+        report_once_with(equipment, "bind-mesh-skeleton-trace", || {
+            format!(
+                "[ERCS-RETARGET-TRACE] equipment=0x{equipment:X} stage=bind-mesh-skeleton {}",
+                mesh_skeleton_trace(&key)
+            )
+        });
         return None;
     };
     let mesh_bones =
