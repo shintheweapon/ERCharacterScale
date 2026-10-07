@@ -116,6 +116,50 @@ static REGISTRY: std::sync::LazyLock<RwLock<Vec<Arc<Session>>>> =
     std::sync::LazyLock::new(|| RwLock::new(Vec::new()));
 static REJECTED: Mutex<Vec<(Key, Identity, u64)>> = Mutex::new(Vec::new());
 static NATIVE: Mutex<Vec<NativeBinding>> = Mutex::new(Vec::new());
+/// Diagnostics builds only: (equipment, stage) pairs already logged, so the
+/// per-frame retries of capture and binding report each reason once.
+static SKIP_REPORTS: Mutex<Vec<(usize, &'static str)>> = Mutex::new(Vec::new());
+const SKIP_REPORT_CAP: usize = 256;
+
+/// True the first time `key` is seen. Once `cap` keys are held the memory is
+/// cleared, so a long session reports again instead of growing without bound.
+fn first_report(
+    seen: &mut Vec<(usize, &'static str)>,
+    key: (usize, &'static str),
+    cap: usize,
+) -> bool {
+    if seen.contains(&key) {
+        return false;
+    }
+    if seen.len() >= cap {
+        seen.clear();
+    }
+    seen.push(key);
+    true
+}
+
+/// Logs `message` once per (equipment, stage) in diagnostics builds; the
+/// default build neither records nor formats anything.
+fn report_once(equipment: usize, stage: &'static str, message: std::fmt::Arguments<'_>) {
+    if !crate::log::ENABLED {
+        return;
+    }
+    let Ok(mut seen) = SKIP_REPORTS.lock() else {
+        return;
+    };
+    if first_report(&mut seen, (equipment, stage), SKIP_REPORT_CAP) {
+        crate::log::line(message);
+    }
+}
+
+/// Reports why equipment retargeting left this equipment on the native path.
+fn report_skip(equipment: usize, stage: &'static str, detail: std::fmt::Arguments<'_>) {
+    report_once(
+        equipment,
+        stage,
+        format_args!("[ERCS-RETARGET-SKIP] equipment=0x{equipment:X} stage={stage} {detail}"),
+    );
+}
 
 struct NativeBinding {
     key: Key,
@@ -523,15 +567,56 @@ fn mesh_skeleton(key: &Key) -> Option<Vec<Bone>> {
 }
 
 fn bind(key: Key, identity: Identity, generation: u64, scale: f64, force: bool) -> Option<Binding> {
-    let (source_identity, source_bones) = pose::skeleton(&read, key.source_meta)?;
+    let equipment = key.equipment;
+    let Some((source_identity, source_bones)) = pose::skeleton(&read, key.source_meta) else {
+        report_skip(
+            equipment,
+            "bind-source-skeleton",
+            format_args!("unreadable"),
+        );
+        return None;
+    };
     let source_bones = crate::equipment_retarget::animation_reference(source_bones);
+    let Some(raw_mesh) = mesh_skeleton(&key) else {
+        report_skip(equipment, "bind-mesh-skeleton", format_args!("unreadable"));
+        return None;
+    };
     let mesh_bones =
-        crate::equipment_retarget::equipment_mesh_reference(&source_bones, &mesh_skeleton(&key)?)
-            .ok()?;
+        match crate::equipment_retarget::equipment_mesh_reference(&source_bones, &raw_mesh) {
+            Ok(bones) => bones,
+            Err(error) => {
+                report_skip(
+                    equipment,
+                    "bind-mesh-reference",
+                    format_args!("error={error:?} mesh_bones={}", raw_mesh.len()),
+                );
+                return None;
+            }
+        };
     if !force {
         let difference =
-            crate::equipment_retarget::proportion_difference(&source_bones, &mesh_bones).ok()?;
+            match crate::equipment_retarget::proportion_difference(&source_bones, &mesh_bones) {
+                Ok(difference) => difference,
+                Err(error) => {
+                    report_skip(
+                        equipment,
+                        "bind-proportion-compare",
+                        format_args!("error={error:?}"),
+                    );
+                    return None;
+                }
+            };
         if difference.changed == 0 {
+            report_skip(
+                equipment,
+                "bind-native-no-difference",
+                format_args!(
+                    "compared={} changed=0 mesh_bones={} source_bones={}",
+                    difference.compared,
+                    mesh_bones.len(),
+                    source_bones.len()
+                ),
+            );
             let native = NativeBinding {
                 key,
                 identity,
@@ -543,16 +628,45 @@ fn bind(key: Key, identity: Identity, generation: u64, scale: f64, force: bool) 
                 .then_some(Binding::Native(Box::new(native)));
         }
     }
-    let mut mesh_plan = Plan::new(source_bones.clone(), mesh_bones.clone(), &[]).ok()?;
+    let mut mesh_plan = match Plan::new(source_bones.clone(), mesh_bones.clone(), &[]) {
+        Ok(plan) => plan,
+        Err(error) => {
+            report_skip(equipment, "bind-mesh-plan", format_args!("error={error:?}"));
+            return None;
+        }
+    };
     let motion = MotionProfile::new(&source_bones, &mesh_bones);
     if motion.is_some() {
         mesh_plan.calibrate_limb_directions();
     }
     let (cloth_identity, cloth_bones, cloth_plan) = if key.owner != 0 {
-        let (id, bones) = pose::skeleton(&read, key.input_meta)?;
+        let Some((id, bones)) = pose::skeleton(&read, key.input_meta) else {
+            report_skip(equipment, "bind-cloth-skeleton", format_args!("unreadable"));
+            return None;
+        };
         let bones =
-            crate::equipment_retarget::equipment_physics_reference(&mesh_bones, &bones).ok()?;
-        let plan = Plan::new(source_bones.clone(), bones.clone(), &[]).ok()?;
+            match crate::equipment_retarget::equipment_physics_reference(&mesh_bones, &bones) {
+                Ok(bones) => bones,
+                Err(error) => {
+                    report_skip(
+                        equipment,
+                        "bind-cloth-reference",
+                        format_args!("error={error:?}"),
+                    );
+                    return None;
+                }
+            };
+        let plan = match Plan::new(source_bones.clone(), bones.clone(), &[]) {
+            Ok(plan) => plan,
+            Err(error) => {
+                report_skip(
+                    equipment,
+                    "bind-cloth-plan",
+                    format_args!("error={error:?}"),
+                );
+                return None;
+            }
+        };
         (Some(id), bones, Some(plan))
     } else {
         (None, Vec::new(), None)
@@ -609,9 +723,15 @@ fn bind(key: Key, identity: Identity, generation: u64, scale: f64, force: bool) 
         cloth_to_mesh,
         work: Mutex::new(work),
     };
-    session
-        .current()
-        .then_some(Binding::Retarget(Box::new(session)))
+    let current = session.current();
+    if !current {
+        report_skip(
+            equipment,
+            "bind-session-not-current",
+            format_args!("equipment or skeleton changed while binding"),
+        );
+    }
+    current.then_some(Binding::Retarget(Box::new(session)))
 }
 
 /// Called for the verified local player at the existing pre-physics update.
@@ -684,64 +804,114 @@ pub(crate) fn refresh(player: usize, scale: f32, generation: u64) {
                 }
                 let item = ptr(equipment + 0x10)?;
                 let name = model_name(item)?;
-                let force = settings.policy(&name)?;
-                let resource = ptr(item + 0x68)?;
-                let exporter = ptr(item + 0x658)?;
+                // Empty slots stop above on every frame; from here on each
+                // exit names its stage once in diagnostics builds.
+                let skip = |stage: &'static str| {
+                    report_skip(equipment, stage, format_args!("model={name}"));
+                };
+                let Some(force) = settings.policy(&name) else {
+                    skip("capture-policy-excluded");
+                    return None;
+                };
+                let (Some(resource), Some(exporter)) = (ptr(item + 0x68), ptr(item + 0x658)) else {
+                    skip("capture-resource");
+                    return None;
+                };
                 if ptr(exporter) != Some(base + 0x2B701A0)
                     || ptr(exporter + 0x100) != Some(resource)
                 {
+                    skip("capture-exporter");
                     return None;
                 }
+                let Some(bind_reference) = ptr(resource + 0x2F8) else {
+                    skip("capture-bind-reference");
+                    return None;
+                };
                 let mut mappers = Vec::new();
                 let mut route = vec![
                     (item + 0x658, exporter),
                     (exporter, base + 0x2B701A0),
                     (exporter + 0x100, resource),
-                    (resource + 0x2F8, ptr(resource + 0x2F8)?),
+                    (resource + 0x2F8, bind_reference),
                 ];
                 let mut visited = HashSet::new();
                 for offset in [0x48, 0x68] {
-                    let holder = ptr(exporter + offset + 8)?;
-                    route.extend([(exporter + offset + 8, holder), (holder, ptr(holder)?)]);
-                    find_mappers(
-                        provider(exporter + offset)?,
-                        base,
-                        &mut mappers,
-                        &mut visited,
-                        0,
-                        &mut route,
-                    )?;
+                    let searched = (|| {
+                        let holder = ptr(exporter + offset + 8)?;
+                        route.extend([(exporter + offset + 8, holder), (holder, ptr(holder)?)]);
+                        find_mappers(
+                            provider(exporter + offset)?,
+                            base,
+                            &mut mappers,
+                            &mut visited,
+                            0,
+                            &mut route,
+                        )
+                    })();
+                    if searched.is_none() {
+                        skip("capture-mapper-search");
+                        return None;
+                    }
                 }
                 if mappers.is_empty() {
+                    skip("capture-no-mappers");
                     return None;
                 }
                 for &mapper in &mappers {
-                    let skeleton = ptr(mapper + 0x90)?;
-                    route.extend([
-                        (mapper + 0x90, skeleton),
-                        (skeleton + 8, ptr(skeleton + 8)?),
-                    ]);
+                    let skeleton = ptr(mapper + 0x90);
+                    let Some((skeleton, bones)) = skeleton.and_then(|s| Some((s, ptr(s + 8)?)))
+                    else {
+                        skip("capture-mapper-skeleton");
+                        return None;
+                    };
+                    route.extend([(mapper + 0x90, skeleton), (skeleton + 8, bones)]);
                 }
-                let owner = ptr(equipment + 0x130)?;
+                let Some(owner) = ptr(equipment + 0x130) else {
+                    skip("capture-cloth-owner-read");
+                    return None;
+                };
                 let (input, input_meta, inner, core) = if owner != 0 {
                     if ptr(owner) != Some(base + 0x2B92A60) {
+                        skip("capture-cloth-owner-type");
                         return None;
                     }
-                    let input = ptr(owner + 0x120)?;
+                    let Some(input) = ptr(owner + 0x120) else {
+                        skip("capture-cloth-input");
+                        return None;
+                    };
                     if input == source
                         || input == identity.cloth_pose
                         || ptr(input) != Some(base + INPUT_VTABLE)
                     {
+                        skip("capture-cloth-input");
                         return None;
                     }
-                    let inner = ptr(owner + 0x40)?;
+                    let Some(inner) = ptr(owner + 0x40) else {
+                        skip("capture-cloth-core");
+                        return None;
+                    };
                     if ptr(inner) != Some(base + 0x329A2F8) {
+                        skip("capture-cloth-core");
                         return None;
                     }
-                    (input, ptr(input + 0x48)?, inner, ptr(inner + 0x30)?)
+                    let (Some(input_meta), Some(core)) = (ptr(input + 0x48), ptr(inner + 0x30))
+                    else {
+                        skip("capture-cloth-core");
+                        return None;
+                    };
+                    (input, input_meta, inner, core)
                 } else {
                     (0, 0, 0, 0)
                 };
+                report_once(
+                    equipment,
+                    "captured",
+                    format_args!(
+                        "[ERCS-RETARGET] captured equipment=0x{equipment:X} model={name} force={force} mappers={} cloth_owner={}",
+                        mappers.len(),
+                        owner != 0
+                    ),
+                );
                 Some((
                     Key {
                         player,

@@ -42,6 +42,8 @@ force_models = ["BD_M_FORCE_RETARGET"]
 
 设置 `[retarget] enabled = false` 可关闭重定向。配置在启动时读取，修改后重启游戏。[最小示例](../examples/ERCharacterScale.retarget.toml) 不包含任何必填装备列表。
 
+诊断构建（启用 `diagnostics` 特性）会在 `ERCharacterScale.log` 中说明装备为何未被重定向。每件装备的每个原因只记录一次，格式为 `[ERCS-RETARGET-SKIP] equipment=… stage=…`。读取到模型名之后的捕获阶段以 `capture-` 开头，绑定阶段以 `bind-` 开头；`bind-native-no-difference` 表示未检测到比例差异，并给出比较和变化的骨段数。成功捕获的装备另有一行 `[ERCS-RETARGET] captured`，包含模型名和映射器数量。默认构建不写日志。
+
 ## English
 
 v2.55.0 supports automatic detection of different player-equipment proportions.
@@ -53,6 +55,8 @@ At equipment binding, the adapter compares matching body-chain lengths from the 
 The initial intended use is a local-player full-body replacement. Preserve matching unique base-joint names, valid hierarchy, target reference proportions and consistent skin binding. Author the equipment's physics skeleton, reference shape, constraints and colliders for those proportions. The adapter supplies a private target pose to native equipment physics and uses simulated output for rendering. It does not reshape old physics assets or modify shared gameplay animation/collision data. For a complete body, animation-driven displacement follows the reference leg-length ratio and normal camera follow height uses the reference head-height ratio. Explicit camera dummy overrides retain native behavior. Weapons and sheaths follow the retargeted anchors. Matching finger landmarks calibrate the animated grip region for the new palm dimensions while preserving weapon size and native grip orientation. Two-handed grip uses the current animation’s relative trajectory, both palms’ calibration and length-preserving IK. Grounded foot correction uses native contact height and ankle orientation while native foot IK is enabled. Rendering and equipment physics consume the same corrected pose.
 
 The optional table above can exclude a model or force retargeting despite unchanged detected lengths. Use internal loaded model names, matched case-insensitively; names may differ from item IDs and file numbers. Conflicting overrides are rejected. Forcing does not bypass data validation. The earlier development field `models` is an alias for `force_models`. Set `enabled = false` inside `[retarget]` to disable retargeting. Restart after configuration changes.
+
+A diagnostics build (`diagnostics` feature) explains in `ERCharacterScale.log` why equipment is not retargeted. Each reason is logged once per equipment as `[ERCS-RETARGET-SKIP] equipment=… stage=…`. Capture stages, checked once the model name is readable, start with `capture-`; binding stages start with `bind-`. `bind-native-no-difference` means no proportion difference was detected and reports the compared and changed chain counts. Captured equipment also gets one `[ERCS-RETARGET] captured` line with its model name and mapper count. The default build writes no log.
 
 Validate first at overall scale 1.0, then test scale combinations, equipment changes and different actions. Unsupported bindings fall back to native behavior; unequipping or rebuilding revokes stale bindings. Automated geometry and owned-memory tests do not establish native cloth dynamics, GPU output or game-frame performance. These remain in-game acceptance items.
 

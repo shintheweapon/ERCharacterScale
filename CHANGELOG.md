@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Diagnostics builds log, once per equipment and reason, why equipment retargeting leaves equipment on the native path.
+
 ## 2.55.1
 
 - Improve seated poses, leg animation adaptation and ground contact with equipment of different proportions.
