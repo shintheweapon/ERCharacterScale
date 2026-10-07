@@ -935,6 +935,12 @@ pub(crate) fn refresh(player: usize, scale: f32, generation: u64) {
                 for offset in [0x48, 0x68] {
                     let searched = (|| {
                         let holder = ptr(exporter + offset + 8)?;
+                        // Equipment without cloth has no second list. The
+                        // recorded null edge revokes the binding if one appears.
+                        if holder == 0 {
+                            route.push((exporter + offset + 8, 0));
+                            return Some(());
+                        }
                         route.extend([(exporter + offset + 8, holder), (holder, ptr(holder)?)]);
                         find_mappers(
                             provider(exporter + offset)?,

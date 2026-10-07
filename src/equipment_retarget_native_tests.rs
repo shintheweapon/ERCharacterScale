@@ -1237,3 +1237,26 @@ fn default_build_never_builds_trace_messages() {
         panic!("message built without diagnostics")
     });
 }
+
+#[test]
+fn equipment_without_cloth_retargets_through_first_mapper() {
+    let fixture = NativeTest::new();
+    let equipment = ptr(fixture.slot).unwrap();
+    let item = ptr(equipment + 0x10).unwrap();
+    let exporter = ptr(item + 0x658).unwrap();
+    let holder = ptr(exporter + 0x70).unwrap();
+    // No second mapper list and no cloth owner, as for equipment without cloth.
+    fixture._heap.put(exporter + 0x70, 0usize);
+    fixture._heap.put(equipment + 0x130, 0usize);
+    refresh(fixture.character.address, 1.0, 1);
+    assert_eq!(
+        REGISTRY.read().unwrap().len(),
+        1,
+        "equipment without cloth must bind"
+    );
+    // With no cloth owner the render waits for no solver step.
+    let out = fixture.draw();
+    assert!((out[2][3] - 1.1).abs() < 1e-5);
+    fixture._heap.put(exporter + 0x70, holder);
+    assert!(!REGISTRY.read().unwrap()[0].key.current(TEST_BASE));
+}
