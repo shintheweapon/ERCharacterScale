@@ -152,6 +152,22 @@ fn report_once(equipment: usize, stage: &'static str, message: std::fmt::Argumen
     }
 }
 
+/// Like `report_once`, but builds the message only the first time, for
+/// messages that read memory to describe the equipment.
+fn report_once_with(equipment: usize, stage: &'static str, message: impl FnOnce() -> String) {
+    if !crate::log::ENABLED {
+        return;
+    }
+    let Ok(mut seen) = SKIP_REPORTS.lock() else {
+        return;
+    };
+    let first = first_report(&mut seen, (equipment, stage), SKIP_REPORT_CAP);
+    drop(seen);
+    if first {
+        crate::log::line(format_args!("{}", message()));
+    }
+}
+
 /// Reports why equipment retargeting left this equipment on the native path.
 fn report_skip(equipment: usize, stage: &'static str, detail: std::fmt::Arguments<'_>) {
     report_once(
@@ -501,6 +517,81 @@ fn find_mappers(
     Some(())
 }
 
+/// Diagnostics only: repeats the reads `find_mappers` makes from `exporter`
+/// and names each value, so a failed search shows the pointer it stopped at.
+/// Reads memory only; the search itself is unaffected.
+fn mapper_trace(exporter: usize, base: usize) -> String {
+    use std::fmt::Write;
+    let shown =
+        |at: usize| ptr(at).map_or_else(|| "unreadable".to_string(), |v| format!("0x{v:X}"));
+    let mut out = String::from("heads=[");
+    for offset in (0x40..0x78).step_by(8) {
+        let _ = write!(out, "+0x{offset:X}={} ", shown(exporter + offset));
+    }
+    out.pop();
+    out.push(']');
+    let mut visited = HashSet::new();
+    for offset in [0x48, 0x68] {
+        let _ = write!(out, " list+0x{offset:X}:");
+        let Some(holder) = ptr(exporter + offset + 8) else {
+            out.push_str(" holder=unreadable");
+            continue;
+        };
+        let _ = write!(out, " holder=0x{holder:X}");
+        let Some(mut node) = ptr(holder) else {
+            out.push_str(" provider=unreadable");
+            continue;
+        };
+        let _ = write!(out, " provider=0x{node:X}");
+        for depth in 0..=9 {
+            if depth > 8 {
+                out.push_str(" depth-limit");
+                break;
+            }
+            if node == 0 {
+                out.push_str(" node=null");
+                break;
+            }
+            if !visited.insert(node) {
+                let _ = write!(out, " node=0x{node:X} seen");
+                break;
+            }
+            let Some(vtable) = ptr(node) else {
+                let _ = write!(out, " node=0x{node:X} vtable=unreadable");
+                break;
+            };
+            let Some(kind) = vtable.checked_sub(base) else {
+                let _ = write!(out, " node=0x{node:X} vtable=0x{vtable:X} below-base");
+                break;
+            };
+            let _ = write!(out, " node=0x{node:X} vtable=+0x{kind:X}");
+            match kind {
+                MAPPER_VTABLE => {
+                    out.push_str(" mapper");
+                    break;
+                }
+                0x2B708D0 | 0x2B6EB88 => {
+                    let link = node + if kind == 0x2B708D0 { 0x68 } else { 0x48 };
+                    let Some(holder) = ptr(link + 8) else {
+                        out.push_str(" link-holder=unreadable");
+                        break;
+                    };
+                    let Some(next) = ptr(holder) else {
+                        let _ = write!(out, " link-holder=0x{holder:X} next=unreadable");
+                        break;
+                    };
+                    node = next;
+                }
+                _ => {
+                    out.push_str(" other");
+                    break;
+                }
+            }
+        }
+    }
+    out
+}
+
 fn model_name(item: usize) -> Option<String> {
     let length = ptr(item + 0x6D8)?;
     let capacity = ptr(item + 0x6E0)?;
@@ -827,6 +918,12 @@ pub(crate) fn refresh(player: usize, scale: f32, generation: u64) {
                     skip("capture-bind-reference");
                     return None;
                 };
+                report_once_with(equipment, "capture-mapper-trace", || {
+                    format!(
+                        "[ERCS-RETARGET-TRACE] equipment=0x{equipment:X} model={name} {}",
+                        mapper_trace(exporter, base)
+                    )
+                });
                 let mut mappers = Vec::new();
                 let mut route = vec![
                     (item + 0x658, exporter),
