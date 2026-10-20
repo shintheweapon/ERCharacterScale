@@ -71,11 +71,11 @@ fn prepare(
     location: usize,
     base: usize,
 ) -> Option<[f32; 16]> {
-    if pose::pointer(read, location)? != base + 0x2B6EC58 {
+    if pose::pointer(read, location)? != base + crate::compatibility::rva(0x2B6EC58) {
         return None;
     }
     let player = pose::pointer(read, location.checked_add(0xb0)?)?;
-    let world = pose::pointer(read, base + 0x3D69FF8)?;
+    let world = pose::pointer(read, base + crate::compatibility::rva(0x3D69FF8))?;
     if pose::pointer(read, world.checked_add(0x1e508)?)? != player {
         return None;
     }
@@ -155,15 +155,10 @@ unsafe fn install_at(
 }
 
 pub(crate) fn install(base: usize) -> bool {
-    if !memory_query::scoped(|| {
-        GUARDS.iter().all(|(rva, bytes)| {
-            let mut actual = vec![0; bytes.len()];
-            read(base + rva, &mut actual) && actual == *bytes
-        })
-    }) {
+    if !layout_supported(base) {
         return false;
     }
-    let hook = unsafe { install_at(base + 0xB43B00, base) };
+    let hook = unsafe { install_at(base + crate::compatibility::rva(0xB43B00), base) };
     match hook {
         Ok(hook) => {
             std::mem::forget(hook);
@@ -171,6 +166,16 @@ pub(crate) fn install(base: usize) -> bool {
         }
         Err(_) => false,
     }
+}
+
+pub(crate) fn layout_supported(base: usize) -> bool {
+    memory_query::scoped(|| {
+        GUARDS.iter().all(|(rva, bytes)| {
+            let mut actual = vec![0; bytes.len()];
+            read(base + crate::compatibility::rva(*rva), &mut actual)
+                && crate::compatibility::matches_code(*rva, &actual, bytes)
+        })
+    })
 }
 
 #[cfg(test)]
@@ -211,7 +216,11 @@ mod tests {
             *f.global = f.world.as_ptr() as usize;
             *f.link = 0x123456;
             let base = f.base();
-            put(&mut f.location[..], 0, base + 0x2B6EC58);
+            put(
+                &mut f.location[..],
+                0,
+                base + crate::compatibility::rva(0x2B6EC58),
+            );
             put(&mut f.location[..], 0xb0, player);
             put(&mut f.location[..], 0x50, &*f.link as *const usize as usize);
             put(&mut f.location[..], 0x70, ROOT);

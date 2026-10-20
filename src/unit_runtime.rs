@@ -17,12 +17,15 @@ const ACTIVE_ENTRY_STATE: u8 = 4;
 
 pub(crate) fn entry_state_supported(base: usize) -> bool {
     ENTRY_STATE_CHECKS.iter().all(|(rva, expected)| {
-        let Some(address) = base.checked_add(*rva) else {
+        let Some(address) = base.checked_add(crate::compatibility::rva(*rva)) else {
             return false;
         };
         accessible(address, expected.len(), false).is_some()
-            && unsafe { std::slice::from_raw_parts(address as *const u8, expected.len()) }
-                == *expected
+            && crate::compatibility::matches_code(
+                *rva,
+                unsafe { std::slice::from_raw_parts(address as *const u8, expected.len()) },
+                expected,
+            )
     })
 }
 
@@ -338,9 +341,13 @@ pub(crate) struct EnemyApi {
 impl EnemyApi {
     pub fn validate(base: usize) -> Option<Self> {
         if !NATIVE_CHECKS.iter().all(|(rva, bytes)| {
-            accessible(base + *rva, bytes.len(), false).is_some()
-                && unsafe { std::slice::from_raw_parts((base + *rva) as *const u8, bytes.len()) }
-                    == *bytes
+            let address = base + crate::compatibility::rva(*rva);
+            accessible(address, bytes.len(), false).is_some()
+                && crate::compatibility::matches_code(
+                    *rva,
+                    unsafe { std::slice::from_raw_parts(address as *const u8, bytes.len()) },
+                    bytes,
+                )
         }) {
             return None;
         }
@@ -356,9 +363,13 @@ impl EnemyApi {
         if model == 8000 {
             return None;
         } // Torrent is never an enemy scaling target.
-        if vtable == self.base + cloth_owner_scope::ENEMY_VTABLE_RVA && [5, 6, 7].contains(&role) {
+        if vtable == self.base + crate::compatibility::rva(cloth_owner_scope::ENEMY_VTABLE_RVA)
+            && [5, 6, 7].contains(&role)
+        {
             Some(true)
-        } else if vtable == self.base + PLAYER_VTABLE_RVA && [5, 19, 20, 21].contains(&role) {
+        } else if vtable == self.base + crate::compatibility::rva(PLAYER_VTABLE_RVA)
+            && [5, 19, 20, 21].contains(&role)
+        {
             Some(false)
         } else {
             None
@@ -370,7 +381,7 @@ impl EnemyApi {
         }
         let mut team = 255u8;
         let native: unsafe extern "C" fn(usize, *mut u8) -> usize =
-            unsafe { std::mem::transmute(self.base + 0x3F1C90) };
+            unsafe { std::mem::transmute(self.base + crate::compatibility::rva(0x3F1C90)) };
         let result = unsafe { native(identity.address, &mut team) };
         (result == (&team as *const u8 as usize) && team < 79).then_some(team)
     }
@@ -378,15 +389,17 @@ impl EnemyApi {
         let subject_team = self.effective_team(subject)?;
         let player_team = self.effective_team(player)?;
         let object = read::<usize>(
-            self.base + 0x3B283F0 + (subject_team as usize * 79 + player_team as usize) * 8,
+            self.base
+                + crate::compatibility::rva(0x3B283F0)
+                + (subject_team as usize * 79 + player_team as usize) * 8,
         )?;
         let vtable = read::<usize>(object)?;
         let method = read::<usize>(vtable)?;
         // Native 51B5D0 queries this live matrix with relation flags [1,0,0].
         // 51B590 = friend, 51B580 = neutral, 51B5A0 = enemy, 51B5B0 = rival.
         match (
-            vtable.checked_sub(self.base)?,
-            method.checked_sub(self.base)?,
+            crate::compatibility::canonical_rva(vtable.checked_sub(self.base)?),
+            crate::compatibility::canonical_rva(method.checked_sub(self.base)?),
         ) {
             (0x2A4F878, 0x51B590) | (0x2A4F868, 0x51B580) => Some(false),
             (0x2A4F888, 0x51B5A0) | (0x2A4F898, 0x51B5B0) => Some(true),

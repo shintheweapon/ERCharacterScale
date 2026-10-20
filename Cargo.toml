@@ -16,8 +16,8 @@ flate2 = { version = "=1.1.10", default-features = false, features = ["rust_back
 glam = "=0.33.6"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8.23"
-eldenring = { git = "https://github.com/KamiyamaShiki0704/fromsoftware-rs", rev = "02fa5681e27fd2ecd9da79d34aef9fae96805539" }
-fromsoftware-shared = { git = "https://github.com/KamiyamaShiki0704/fromsoftware-rs", rev = "02fa5681e27fd2ecd9da79d34aef9fae96805539", package = "fromsoftware-shared" }
+eldenring = { path = "../fromsoftware-rs/crates/eldenring" }
+fromsoftware-shared = { path = "../fromsoftware-rs/crates/shared" }
 ilhook = { version = "2.3.0", features = ["x64"] }
 windows = { version = "0.61", features = [
     "Win32_Foundation",

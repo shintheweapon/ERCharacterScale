@@ -100,10 +100,6 @@ const ER_ANIM_SKELETON_VTABLE_RVA: usize = 0x2B6F1A0;
 const ER_CLOTH_MODEL_VTABLE_RVA: usize = 0x2B92A60;
 const ER_CLOTH_INNER_VTABLE_RVA: usize = 0x329A2F8;
 
-const ER_PE_TIMESTAMP: u32 = 0x6A96B418;
-const ER_SIZE_OF_IMAGE: u32 = 0x5E0DA00;
-const ER_ENTRY_POINT_RVA: u32 = 0x24FE160;
-
 const CHR_INS_POSE_IMPORTER_OFFSET: usize = 0x398;
 const CHR_INS_ALTERNATE_POSE_IMPORTER_OFFSET: usize = 0x3A0;
 const CHR_INS_CLOTH_POSE_OVERRIDE_OFFSET: usize = 0x3A8;
@@ -867,7 +863,7 @@ pub fn install() -> bool {
 
     let pose_hook = unsafe {
         hook_closure_retn(
-            base + ER_POSE_IMPORTER_UPDATE_RVA,
+            base + crate::compatibility::rva(ER_POSE_IMPORTER_UPDATE_RVA),
             units::pose,
             CallbackOption::None,
             HookFlags::empty(),
@@ -883,7 +879,7 @@ pub fn install() -> bool {
 
     let cloth_setter_hook = unsafe {
         hook_closure_retn(
-            base + ER_CLOTH_INPUT_SETTER_RVA,
+            base + crate::compatibility::rva(ER_CLOTH_INPUT_SETTER_RVA),
             units::setter,
             CallbackOption::None,
             HookFlags::empty(),
@@ -899,7 +895,7 @@ pub fn install() -> bool {
 
     let cloth_secondary_reference_hook = unsafe {
         hook_closure_retn(
-            base + ER_CLOTH_SECONDARY_REFERENCE_SUBMIT_RVA,
+            base + crate::compatibility::rva(ER_CLOTH_SECONDARY_REFERENCE_SUBMIT_RVA),
             units::secondary,
             CallbackOption::None,
             HookFlags::empty(),
@@ -915,7 +911,7 @@ pub fn install() -> bool {
 
     let cloth_commit_hook = unsafe {
         hook_closure_retn(
-            base + ER_CLOTH_INNER_COMMIT_RVA,
+            base + crate::compatibility::rva(ER_CLOTH_INNER_COMMIT_RVA),
             units::commit,
             CallbackOption::None,
             HookFlags::empty(),
@@ -931,7 +927,7 @@ pub fn install() -> bool {
 
     let render_hook = unsafe {
         hook_closure_retn(
-            base + ER_ANIM_SKELETON_GET_AFFINE_RANGE_RVA,
+            base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_AFFINE_RANGE_RVA),
             units::render,
             CallbackOption::None,
             HookFlags::empty(),
@@ -947,7 +943,7 @@ pub fn install() -> bool {
 
     let mesh_frame_hook = unsafe {
         hook_closure_jmp_back(
-            base + ER_CLOTH_MESH_FRAME_COMMIT_RVA,
+            base + crate::compatibility::rva(ER_CLOTH_MESH_FRAME_COMMIT_RVA),
             units::mesh_frame,
             CallbackOption::None,
             HookFlags::empty(),
@@ -962,7 +958,7 @@ pub fn install() -> bool {
     let _ = Box::leak(Box::new(mesh_frame_hook));
     let mesh_pn_hook = unsafe {
         hook_closure_retn(
-            base + ER_CLOTH_MESH_PN_FLOAT_RVA,
+            base + crate::compatibility::rva(ER_CLOTH_MESH_PN_FLOAT_RVA),
             units::mesh_pn,
             CallbackOption::None,
             HookFlags::empty(),
@@ -977,7 +973,7 @@ pub fn install() -> bool {
     let _ = Box::leak(Box::new(mesh_pn_hook));
     let mesh_pn_aligned_hook = unsafe {
         hook_closure_retn(
-            base + ER_CLOTH_MESH_PN_ALIGNED_RVA,
+            base + crate::compatibility::rva(ER_CLOTH_MESH_PN_ALIGNED_RVA),
             units::mesh_pn,
             CallbackOption::None,
             HookFlags::empty(),
@@ -993,7 +989,7 @@ pub fn install() -> bool {
 
     let skin_normal_hook = unsafe {
         hook_closure_retn(
-            base + ER_CLOTH_SKIN_PN_RVA,
+            base + crate::compatibility::rva(ER_CLOTH_SKIN_PN_RVA),
             units::skin,
             CallbackOption::None,
             HookFlags::empty(),
@@ -1009,7 +1005,7 @@ pub fn install() -> bool {
 
     let simple_bone_hook = unsafe {
         hook_closure_retn(
-            base + simple_mesh_bone::ENTRY,
+            base + crate::compatibility::rva(simple_mesh_bone::ENTRY),
             units::simple_bone,
             CallbackOption::None,
             HookFlags::empty(),
@@ -1021,7 +1017,7 @@ pub fn install() -> bool {
     let _ = Box::leak(Box::new(simple_bone_hook));
     let bone_skin_hook = unsafe {
         hook_closure_retn(
-            base + bone_space_skin::ENTRY,
+            base + crate::compatibility::rva(bone_space_skin::ENTRY),
             units::bone_skin,
             CallbackOption::None,
             HookFlags::empty(),
@@ -1035,7 +1031,7 @@ pub fn install() -> bool {
     if ENABLE_AFFINE_FALLBACK_HOOKS {
         let affine_single_hook = unsafe {
             hook_closure_retn(
-                base + ER_ANIM_SKELETON_GET_AFFINE_RVA,
+                base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_AFFINE_RVA),
                 units::affine,
                 CallbackOption::None,
                 HookFlags::empty(),
@@ -1051,7 +1047,7 @@ pub fn install() -> bool {
 
         let affine_range_item_hook = unsafe {
             hook_closure_jmp_back(
-                base + ER_ANIM_SKELETON_GET_AFFINE_RANGE_ITEM_COMMIT_RVA,
+                base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_AFFINE_RANGE_ITEM_COMMIT_RVA),
                 units::affine_item,
                 CallbackOption::None,
                 HookFlags::empty(),
@@ -1069,7 +1065,7 @@ pub fn install() -> bool {
     if ENABLE_LEGACY_MATRIX_OUTPUT_HOOKS {
         let single_hook = unsafe {
             hook_closure_retn(
-                base + ER_ANIM_SKELETON_GET_RVA,
+                base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_RVA),
                 units::matrix,
                 CallbackOption::None,
                 HookFlags::empty(),
@@ -1085,7 +1081,7 @@ pub fn install() -> bool {
 
         let range_hook = unsafe {
             hook_closure_retn(
-                base + ER_ANIM_SKELETON_GET_RANGE_RVA,
+                base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_RANGE_RVA),
                 units::range,
                 CallbackOption::None,
                 HookFlags::empty(),
@@ -1214,7 +1210,9 @@ fn bind_local_player_inner(chr_ins_addr: usize, scale: f32) -> TargetBinding {
         read_usize(chr_ins_addr + CHR_INS_ANIM_SKELETON_MODIFIER_OFFSET).unwrap_or(0);
     let base = MODULE_BASE.load(Ordering::Acquire);
 
-    if read_usize(chr_ins_addr) == Some(base + crate::cloth_owner_scope::ENEMY_VTABLE_RVA) {
+    if read_usize(chr_ins_addr)
+        == Some(base + crate::compatibility::rva(crate::cloth_owner_scope::ENEMY_VTABLE_RVA))
+    {
         let scope = ClothOwnerScope::capture(chr_ins_addr, cloth_pose_importer, base, read_usize);
         let model = read_usize(chr_ins_addr + 0x50).unwrap_or(0);
         let owner = model.checked_add(0x130).and_then(read_usize);
@@ -1257,7 +1255,10 @@ fn bind_local_player_inner(chr_ins_addr: usize, scale: f32) -> TargetBinding {
             reason: "cloth-pose-importer-not-ready",
         };
     }
-    if !object_has_vtable(anim_skeleton_modifier, base + ER_ANIM_SKELETON_VTABLE_RVA) {
+    if !object_has_vtable(
+        anim_skeleton_modifier,
+        base + crate::compatibility::rva(ER_ANIM_SKELETON_VTABLE_RVA),
+    ) {
         clear_target();
         return TargetBinding {
             ready: false,
@@ -1464,6 +1465,7 @@ fn validate_runtime(base: usize) -> Result<(), &'static str> {
     if !validate_pe_identity(base) {
         return Err("PE identity mismatch");
     }
+    crate::compatibility::set_image_base(base);
     if !validate_skin_normal_runtime(base) {
         return Err("SkinPN execution layout mismatch");
     }
@@ -1474,151 +1476,183 @@ fn validate_runtime(base: usize) -> Result<(), &'static str> {
         return Err("BoneSpaceSkinPN execution layout mismatch");
     }
     if !bytes_equal(
-        base + ER_CLOTH_MESH_PN_FLOAT_RVA,
+        base + crate::compatibility::rva(ER_CLOTH_MESH_PN_FLOAT_RVA),
         &[
             0x48, 0x89, 0x6C, 0x24, 0x18, 0x56, 0x57, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x40,
         ],
     ) || !bytes_equal(
-        base + ER_CLOTH_MESH_PN_ALIGNED_RVA,
+        base + crate::compatibility::rva(ER_CLOTH_MESH_PN_ALIGNED_RVA),
         &[
             0x48, 0x89, 0x6C, 0x24, 0x18, 0x56, 0x57, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x40,
         ],
-    ) || !bytes_equal(base + 0x15C756F, &[0xE8, 0x4C, 0xD0, 0xFD, 0xFF])
-        || !bytes_equal(base + 0x15C770B, &[0xE8, 0x90, 0xEA, 0x01, 0x00])
-        || !bytes_equal(base + 0x15C771F, &[0xE8, 0x7C, 0xDC, 0xFD, 0xFF])
-        || !bytes_equal(base + 0x15C8093, &[0xE8, 0x98, 0xF5, 0xFF, 0xFF])
-        || read_usize(base + ER_CLOTH_MESH_PN_VTABLE_RVA + 0x20) != Some(base + 0x15C7FD0)
-        || read_usize(base + ER_CLOTH_MESH_P_VTABLE_RVA + 0x20) != Some(base + 0x1589A20)
+    ) || !bytes_equal(
+        base + crate::compatibility::rva(0x15C756F),
+        &[0xE8, 0x4C, 0xD0, 0xFD, 0xFF],
+    ) || !bytes_equal(
+        base + crate::compatibility::rva(0x15C770B),
+        &[0xE8, 0x90, 0xEA, 0x01, 0x00],
+    ) || !bytes_equal(
+        base + crate::compatibility::rva(0x15C771F),
+        &[0xE8, 0x7C, 0xDC, 0xFD, 0xFF],
+    ) || !bytes_equal(
+        base + crate::compatibility::rva(0x15C8093),
+        &[0xE8, 0x98, 0xF5, 0xFF, 0xFF],
+    ) || read_usize(base + crate::compatibility::rva(ER_CLOTH_MESH_PN_VTABLE_RVA) + 0x20)
+        != Some(base + crate::compatibility::rva(0x15C7FD0))
+        || read_usize(base + crate::compatibility::rva(ER_CLOTH_MESH_P_VTABLE_RVA) + 0x20)
+            != Some(base + crate::compatibility::rva(0x1589A20))
     {
         return Err("cloth mesh PN execution layout mismatch");
     }
     if !bytes_equal(
-        base + 0x15E5834,
+        base + crate::compatibility::rva(0x15E5834),
         &[
             0x0F, 0x28, 0xCA, 0x0F, 0xC6, 0xCA, 0xC9, 0x0F, 0xC6, 0xC4, 0xC9, 0x0F, 0x59, 0xC2,
             0x0F, 0x59, 0xCC, 0x0F, 0x5C, 0xC8, 0x0F, 0xC6, 0xC9, 0xC9, 0x41, 0x0F, 0x29, 0x48,
             0x20,
         ],
-    ) || !bytes_equal(base + 0x15E61D2, CLOTH_MESH_FRAME_DISPATCH_PATTERN)
-        || !bytes_equal(
-            base + ER_CLOTH_MESH_FRAME_COMMIT_RVA,
-            &[0x8B, 0x0D, 0x9F, 0xE3, 0x1F, 0x03],
-        )
-        || !bytes_equal(
-            base + 0x15E5A26,
-            &[
-                0x8B, 0x5F, 0x60, 0x45, 0x33, 0xDB, 0x4C, 0x8B, 0x56, 0x30, 0x48, 0x8B, 0x6E, 0x18,
-            ],
-        )
-        || !bytes_equal(
-            base + 0x15E5AEA,
-            &[
-                0x0F, 0x52, 0xC2, 0x0F, 0x28, 0xCA, 0x0F, 0xC2, 0xCF, 0x02, 0x0F, 0x55, 0xC8, 0x0F,
-                0x59, 0xCB,
-            ],
-        )
-    {
+    ) || !bytes_equal(
+        base + crate::compatibility::rva(0x15E61D2),
+        CLOTH_MESH_FRAME_DISPATCH_PATTERN,
+    ) || !bytes_equal(
+        base + crate::compatibility::rva(ER_CLOTH_MESH_FRAME_COMMIT_RVA),
+        &[0x8B, 0x0D, 0x9F, 0xE3, 0x1F, 0x03],
+    ) || !bytes_equal(
+        base + crate::compatibility::rva(0x15E5A26),
+        &[
+            0x8B, 0x5F, 0x60, 0x45, 0x33, 0xDB, 0x4C, 0x8B, 0x56, 0x30, 0x48, 0x8B, 0x6E, 0x18,
+        ],
+    ) || !bytes_equal(
+        base + crate::compatibility::rva(0x15E5AEA),
+        &[
+            0x0F, 0x52, 0xC2, 0x0F, 0x28, 0xCA, 0x0F, 0xC2, 0xCF, 0x02, 0x0F, 0x55, 0xC8, 0x0F,
+            0x59, 0xCB,
+        ],
+    ) {
         return Err("cloth mesh frame construction/commit mismatch");
     }
-    if read_usize(base + ER_HCL_VOLUME_CONSTRAINT_MX_VTABLE_RVA) != Some(base + 0x1546430)
-        || read_usize(base + ER_HCL_VOLUME_CONSTRAINT_MX_VTABLE_RVA + 0x30)
-            != Some(base + 0x15E54C0)
+    if read_usize(base + crate::compatibility::rva(ER_HCL_VOLUME_CONSTRAINT_MX_VTABLE_RVA))
+        != Some(base + crate::compatibility::rva(0x1546430))
+        || read_usize(
+            base + crate::compatibility::rva(ER_HCL_VOLUME_CONSTRAINT_MX_VTABLE_RVA) + 0x30,
+        ) != Some(base + crate::compatibility::rva(0x15E54C0))
     {
         return Err("volume constraint layout mismatch");
     }
-    if !bytes_equal(base + ER_POSE_IMPORTER_UPDATE_RVA, POSE_IMPORTER_PATTERN) {
+    if !bytes_equal(
+        base + crate::compatibility::rva(ER_POSE_IMPORTER_UPDATE_RVA),
+        POSE_IMPORTER_PATTERN,
+    ) {
         return Err("pose importer entry mismatch");
     }
     if !bytes_equal(
-        base + ER_CLOTH_POSE_SELECTOR_RVA,
+        base + crate::compatibility::rva(ER_CLOTH_POSE_SELECTOR_RVA),
         CLOTH_POSE_SELECTOR_PATTERN,
     ) {
         return Err("cloth pose selector mismatch");
     }
-    if !bytes_equal(base + ER_CLOTH_INPUT_SETTER_RVA, CLOTH_INPUT_SETTER_PATTERN) {
+    if !bytes_equal(
+        base + crate::compatibility::rva(ER_CLOTH_INPUT_SETTER_RVA),
+        CLOTH_INPUT_SETTER_PATTERN,
+    ) {
         return Err("cloth input setter mismatch");
     }
     // Ownership seams are read-only, but gate their offsets as strictly as
     // hook entries. Never scan a guessed equipment table on another build.
     if !bytes_equal(
-        base + 0x9EAA4F,
+        base + crate::compatibility::rva(0x9EAA4F),
         &[
             0x48, 0x8D, 0x59, 0x28, 0x48, 0x89, 0x51, 0x10, 0x48, 0x8D, 0xBB, 0xD8, 0x00, 0x00,
             0x00,
         ],
-    ) || !bytes_equal(base + 0x9EA1AF, &[0x48, 0x89, 0x51, 0x08])
-        || !bytes_equal(
-            base + 0x9F1448,
-            &[
-                0x48, 0x8B, 0x8B, 0x30, 0x01, 0x00, 0x00, 0x48, 0x8B, 0xD7, 0xE8, 0x99, 0xB7, 0x25,
-                0x00,
-            ],
-        )
-        || read_usize(base + crate::cloth_owner_scope::ASSEMBLY_VTABLE_RVA) != Some(base + 0x9EAA00)
-        || read_usize(base + crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA)
-            != Some(base + 0x9F3B60)
+    ) || !bytes_equal(
+        base + crate::compatibility::rva(0x9EA1AF),
+        &[0x48, 0x89, 0x51, 0x08],
+    ) || !bytes_equal(
+        base + crate::compatibility::rva(0x9F1448),
+        &[
+            0x48, 0x8B, 0x8B, 0x30, 0x01, 0x00, 0x00, 0x48, 0x8B, 0xD7, 0xE8, 0x99, 0xB7, 0x25,
+            0x00,
+        ],
+    ) || read_usize(
+        base + crate::compatibility::rva(crate::cloth_owner_scope::ASSEMBLY_VTABLE_RVA),
+    ) != Some(base + crate::compatibility::rva(0x9EAA00))
+        || read_usize(
+            base + crate::compatibility::rva(crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA),
+        ) != Some(base + crate::compatibility::rva(0x9F3B60))
     {
         return Err("equipment cloth ownership layout mismatch");
     }
     if !bytes_equal(
-        base + ER_CLOTH_SECONDARY_REFERENCE_SUBMIT_RVA,
+        base + crate::compatibility::rva(ER_CLOTH_SECONDARY_REFERENCE_SUBMIT_RVA),
         CLOTH_SECONDARY_REFERENCE_SUBMIT_PATTERN,
     ) {
         return Err("cloth secondary reference submit mismatch");
     }
-    if !bytes_equal(base + ER_CLOTH_INNER_COMMIT_RVA, CLOTH_INNER_COMMIT_PATTERN) {
+    if !bytes_equal(
+        base + crate::compatibility::rva(ER_CLOTH_INNER_COMMIT_RVA),
+        CLOTH_INNER_COMMIT_PATTERN,
+    ) {
         return Err("cloth inner commit mismatch");
     }
     if !bytes_equal(
-        base + ER_POSE_RESOLVE_TRANSFORM_RVA,
+        base + crate::compatibility::rva(ER_POSE_RESOLVE_TRANSFORM_RVA),
         POSE_RESOLVE_TRANSFORM_PATTERN,
     ) {
         return Err("pose lazy transform resolver mismatch");
     }
     if !bytes_equal(
-        base + ER_ANIM_SKELETON_GET_AFFINE_RVA,
+        base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_AFFINE_RVA),
         ANIM_SKELETON_GET_AFFINE_PATTERN,
     ) {
         return Err("affine single matrix entry mismatch");
     }
     if !bytes_equal(
-        base + ER_ANIM_SKELETON_GET_AFFINE_RANGE_RVA,
+        base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_AFFINE_RANGE_RVA),
         ANIM_SKELETON_GET_AFFINE_RANGE_PATTERN,
     ) {
         return Err("affine matrix range entry mismatch");
     }
     if !bytes_equal(
-        base + ER_ANIM_SKELETON_GET_AFFINE_RANGE_ITEM_COMMIT_RVA,
+        base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_AFFINE_RANGE_ITEM_COMMIT_RVA),
         ANIM_SKELETON_GET_AFFINE_RANGE_ITEM_COMMIT_PATTERN,
     ) {
         return Err("affine matrix range item commit mismatch");
     }
-    if !bytes_equal(base + ER_ANIM_SKELETON_GET_RVA, ANIM_SKELETON_GET_PATTERN) {
+    if !bytes_equal(
+        base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_RVA),
+        ANIM_SKELETON_GET_PATTERN,
+    ) {
         return Err("single matrix entry mismatch");
     }
     if !bytes_equal(
-        base + ER_ANIM_SKELETON_GET_RANGE_RVA,
+        base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_RANGE_RVA),
         ANIM_SKELETON_GET_RANGE_PATTERN,
     ) {
         return Err("matrix range entry mismatch");
     }
 
-    let pose_vtable = base + ER_POSE_IMPORTER_VTABLE_RVA;
-    if read_usize(pose_vtable + 3 * size_of::<usize>()) != Some(base + ER_POSE_IMPORTER_UPDATE_RVA)
+    let pose_vtable = base + crate::compatibility::rva(ER_POSE_IMPORTER_VTABLE_RVA);
+    if read_usize(pose_vtable + 3 * size_of::<usize>())
+        != Some(base + crate::compatibility::rva(ER_POSE_IMPORTER_UPDATE_RVA))
     {
         return Err("pose importer vtable mismatch");
     }
-    let anim_vtable = base + ER_ANIM_SKELETON_VTABLE_RVA;
-    if !bytes_equal(base + ER_CLOTH_RENDER_CALL_RVA, &[0xFF, 0x50, 0x40])
-        || read_usize(anim_vtable + 0x40) != Some(base + ER_ANIM_SKELETON_GET_AFFINE_RANGE_RVA)
+    let anim_vtable = base + crate::compatibility::rva(ER_ANIM_SKELETON_VTABLE_RVA);
+    if !bytes_equal(
+        base + crate::compatibility::rva(ER_CLOTH_RENDER_CALL_RVA),
+        &[0xFF, 0x50, 0x40],
+    ) || read_usize(anim_vtable + 0x40)
+        != Some(base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_AFFINE_RANGE_RVA))
     {
         return Err("cloth render range call/vtable mismatch");
     }
     if read_usize(anim_vtable + 6 * size_of::<usize>())
-        != Some(base + ER_ANIM_SKELETON_GET_AFFINE_RVA)
-        || read_usize(anim_vtable + 5 * size_of::<usize>()) != Some(base + ER_ANIM_SKELETON_GET_RVA)
+        != Some(base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_AFFINE_RVA))
+        || read_usize(anim_vtable + 5 * size_of::<usize>())
+            != Some(base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_RVA))
         || read_usize(anim_vtable + 7 * size_of::<usize>())
-            != Some(base + ER_ANIM_SKELETON_GET_RANGE_RVA)
+            != Some(base + crate::compatibility::rva(ER_ANIM_SKELETON_GET_RANGE_RVA))
     {
         return Err("anim skeleton vtable mismatch");
     }
@@ -1639,14 +1673,14 @@ fn validate_pe_identity(base: usize) -> bool {
     let nt = base + nt_offset;
     if read_u32(nt) != Some(0x0000_4550)
         || read_u16(nt + 4) != Some(0x8664)
-        || read_u32(nt + 8) != Some(ER_PE_TIMESTAMP)
+        || read_u32(nt + 8) != Some(crate::compatibility::timestamp())
     {
         return false;
     }
     let optional = nt + 0x18;
     read_u16(optional) == Some(0x020B)
-        && read_u32(optional + 0x10) == Some(ER_ENTRY_POINT_RVA)
-        && read_u32(optional + 0x38) == Some(ER_SIZE_OF_IMAGE)
+        && read_u32(optional + 0x10) == Some(crate::compatibility::entrypoint())
+        && read_u32(optional + 0x38) == Some(crate::compatibility::image_size() as u32)
 }
 
 #[cfg(test)]
@@ -1661,8 +1695,15 @@ fn real_271_pe_runtime_guard_and_negative_controls() {
     let u64at = |b: &[u8], at: usize| u64::from_le_bytes(b[at..at + 8].try_into().unwrap());
     let nt = u32at(&file, 0x3C) as usize;
     let opt = nt + 0x18;
+    let newer = u32at(&file, nt + 8) == 0x6aabf7e7;
+    if newer {
+        assert!(eldenring::verify_ww272_file(&file));
+    } else {
+        assert_eq!(u32at(&file, nt + 8), 0x6a96b418);
+    }
+    let _profile = crate::compatibility::owned_image_profile(newer);
     let size = u32at(&file, opt + 0x38) as usize;
-    assert_eq!(size, ER_SIZE_OF_IMAGE as usize);
+    assert_eq!(size, crate::compatibility::image_size());
     let mut image = vec![0u8; size]; // RW heap only; never executable.
     let headers = u32at(&file, opt + 0x3C) as usize;
     image[..headers].copy_from_slice(&file[..headers]);
@@ -1695,8 +1736,72 @@ fn real_271_pe_runtime_guard_and_negative_controls() {
         block += length;
     }
     assert_eq!(validate_runtime(base), Ok(()));
+    assert!(
+        crate::equipment_retarget_native::layout_supported(base),
+        "equipment native preflight"
+    );
+    assert!(
+        crate::animation_retarget_native::layout_supported(base),
+        "animation native preflight"
+    );
+    assert!(
+        crate::mounted_scale::layout_supported(base),
+        "mounted native preflight"
+    );
+    assert!(
+        crate::cloth_collider_rotation_hook::layout_supported(base),
+        "collider native preflight"
+    );
+    assert!(
+        crate::cloth_diagnostic::layout_supported(base),
+        "diagnostic native preflight"
+    );
+    type Preflight = fn(usize) -> bool;
+    let preflights: [(Preflight, &[usize]); 5] = [
+        (
+            crate::equipment_retarget_native::layout_supported,
+            &[
+                0xb47d70, 0xb48590, 0x26b1944, 0x3cc86b, 0x3b85c8, 0x3baac0, 0x26b1fc9, 0x26b1bc9,
+                0xb47060, 0xb697d0, 0xb69850, 0xb69600, 0xb69750,
+            ],
+        ),
+        (
+            crate::animation_retarget_native::layout_supported,
+            &[0x14a2f80, 0x14a3506],
+        ),
+        (
+            crate::mounted_scale::layout_supported,
+            &[0xb43b00, 0xb43c9d, 0xb43d07],
+        ),
+        (
+            crate::cloth_collider_rotation_hook::layout_supported,
+            &[
+                0x15df650, 0x15e81b0, 0x15e81c4, 0x15e824a, 0x15e82a7, 0x15e82ca,
+            ],
+        ),
+        (
+            crate::cloth_diagnostic::layout_supported,
+            &[
+                0x15dc260, 0x1584480, 0x15a1b20, 0x1581640, 0x159b040, 0x157fce0, 0x1585b10,
+                0x1602880, 0x15f0de0, 0x16009b0, 0x15e7fc0, 0x15ea330, 0x15ea44f, 0x15ea4dd,
+            ],
+        ),
+    ];
+    for (check, sites) in preflights {
+        for &legacy in sites {
+            let at = crate::compatibility::rva(legacy);
+            image[at] ^= 1;
+            assert!(
+                !check(base),
+                "native preflight accepted corrupted logical RVA {legacy:x}"
+            );
+            image[at] ^= 1;
+        }
+        assert!(check(base));
+    }
     assert!(crate::unit_runtime::entry_state_supported(base));
     for at in [0x3F0706, 0x3F0719, 0x3F8C59] {
+        let at = crate::compatibility::rva(at);
         image[at] ^= 1;
         assert!(!crate::unit_runtime::entry_state_supported(base));
         image[at] ^= 1;
@@ -1706,6 +1811,13 @@ fn real_271_pe_runtime_guard_and_negative_controls() {
         0x3F1C90, 0x3F1CB2, 0x3F1CDF, 0x51B5D0, 0x51B5E9, 0x51B580, 0x51B590, 0x51B5A0, 0x51B5B0,
         0x9F1C60, 0x9F1448,
     ] {
+        let at = if at == nt + 8 {
+            at
+        } else if at == ER_ANIM_SKELETON_VTABLE_RVA + 0x40 {
+            crate::compatibility::rva(ER_ANIM_SKELETON_VTABLE_RVA) + 0x40
+        } else {
+            crate::compatibility::rva(at)
+        };
         image[at] ^= 1;
         assert!(
             crate::unit_runtime::EnemyApi::validate(base).is_none(),
@@ -1720,13 +1832,20 @@ fn real_271_pe_runtime_guard_and_negative_controls() {
         ER_CLOTH_MESH_FRAME_COMMIT_RVA,
         ER_ANIM_SKELETON_VTABLE_RVA + 0x40,
     ] {
+        let at = if at == nt + 8 {
+            at
+        } else if at == ER_ANIM_SKELETON_VTABLE_RVA + 0x40 {
+            crate::compatibility::rva(ER_ANIM_SKELETON_VTABLE_RVA) + 0x40
+        } else {
+            crate::compatibility::rva(at)
+        };
         image[at] ^= 1;
         assert!(validate_runtime(base).is_err(), "failed negative at {at:X}");
         image[at] ^= 1;
         assert_eq!(validate_runtime(base), Ok(()));
     }
     println!(
-        "REAL-271-VALIDATOR PASS: owned PE,5 rejected corruptions,no executable memory or game writes"
+        "REAL-WW-PROFILE-VALIDATOR PASS: owned PE; body/entry/enemy/equipment/animation/mount/collider/diagnostic corruptions rejected; no executable memory or game writes"
     );
 }
 
@@ -1734,10 +1853,8 @@ fn bytes_equal(addr: usize, expected: &[u8]) -> bool {
     if !is_memory_accessible(addr, expected.len(), false) {
         return false;
     }
-    expected
-        .iter()
-        .enumerate()
-        .all(|(index, expected)| unsafe { (addr as *const u8).add(index).read() == *expected })
+    let actual = unsafe { std::slice::from_raw_parts(addr as *const u8, expected.len()) };
+    crate::compatibility::matches_address(addr, actual, expected)
 }
 
 fn object_has_vtable(object: usize, expected_vtable: usize) -> bool {
@@ -1748,7 +1865,8 @@ fn pose_importer_uses_update_hook(object: usize, module_base: usize) -> bool {
     let Some(vtable) = read_usize(object) else {
         return false;
     };
-    read_usize(vtable + 3 * size_of::<usize>()) == Some(module_base + ER_POSE_IMPORTER_UPDATE_RVA)
+    read_usize(vtable + 3 * size_of::<usize>())
+        == Some(module_base + crate::compatibility::rva(ER_POSE_IMPORTER_UPDATE_RVA))
 }
 
 fn choose_cloth_pose_importer(
@@ -2182,8 +2300,9 @@ fn materialize_live_lazy_solver_sources(
     if base == 0 {
         return None;
     }
-    let resolve: unsafe extern "C" fn(usize, i32) -> usize =
-        unsafe { transmute(base.checked_add(ER_POSE_RESOLVE_TRANSFORM_RVA)?) };
+    let resolve: unsafe extern "C" fn(usize, i32) -> usize = unsafe {
+        transmute(base.checked_add(crate::compatibility::rva(ER_POSE_RESOLVE_TRANSFORM_RVA))?)
+    };
     materialize_lazy_solver_sources(
         update_context,
         transforms,
@@ -4916,8 +5035,8 @@ fn bounded_vector_count(
 
 pub fn module_rva(address: usize) -> usize {
     let base = MODULE_BASE.load(Ordering::Acquire);
-    if address >= base && address < base.saturating_add(ER_SIZE_OF_IMAGE as usize) {
-        address - base
+    if address >= base && address < base.saturating_add(crate::compatibility::image_size()) {
+        crate::compatibility::canonical_rva(address - base)
     } else {
         0
     }
@@ -5194,7 +5313,10 @@ fn render_scope(this: usize, scale: f32) -> Option<RenderScope> {
         return None;
     }
     let base = MODULE_BASE.load(Ordering::Acquire);
-    if !object_has_vtable(this, base + ER_ANIM_SKELETON_VTABLE_RVA) {
+    if !object_has_vtable(
+        this,
+        base + crate::compatibility::rva(ER_ANIM_SKELETON_VTABLE_RVA),
+    ) {
         return None;
     }
     // B50CF0(node) resolves *node.holder; never call game code during selection.
@@ -5443,15 +5565,26 @@ struct SkinNormalCall {
 }
 
 fn validate_skin_normal_runtime(base: usize) -> bool {
-    bytes_equal(base + ER_CLOTH_SKIN_PN_RVA, SKIN_PN_ENTRY)
-        && read_usize(base + ER_CLOTH_SKIN_PN_VTABLE_RVA + 0x20)
-            == Some(base + ER_CLOTH_SKIN_PN_RVA)
-        && bytes_equal(base + 0x15A99F3, &[0xE8, 0x58, 0xA3, 0xFF, 0xFF])
-        && bytes_equal(base + 0x15A3E61, &[0xE8, 0x3A, 0x15, 0x00, 0x00])
-        && bytes_equal(base + 0x15D8226, &[0x41, 0x0F, 0xB7, 0x00])
+    bytes_equal(
+        base + crate::compatibility::rva(ER_CLOTH_SKIN_PN_RVA),
+        SKIN_PN_ENTRY,
+    ) && read_usize(base + crate::compatibility::rva(ER_CLOTH_SKIN_PN_VTABLE_RVA) + 0x20)
+        == Some(base + crate::compatibility::rva(ER_CLOTH_SKIN_PN_RVA))
+        && bytes_equal(
+            base + crate::compatibility::rva(0x15A99F3),
+            &[0xE8, 0x58, 0xA3, 0xFF, 0xFF],
+        )
+        && bytes_equal(
+            base + crate::compatibility::rva(0x15A3E61),
+            &[0xE8, 0x3A, 0x15, 0x00, 0x00],
+        )
+        && bytes_equal(
+            base + crate::compatibility::rva(0x15D8226),
+            &[0x41, 0x0F, 0xB7, 0x00],
+        )
         && SKIN_SOURCE_SEAMS
             .iter()
-            .all(|(rva, code)| bytes_equal(base + rva, code))
+            .all(|(rva, code)| bytes_equal(base + crate::compatibility::rva(*rva), code))
 }
 
 pub fn cloth_skin_normal_counters() -> [u64; 3] {
@@ -5520,7 +5653,8 @@ fn skin_normal_call_traced(
     trace.step("operator_vtable", 0, [op, 0, 0, 0], 0);
     let vtable = read_usize(op)?;
     trace.observed[1] = vtable;
-    let expected_vtable = base.checked_add(ER_CLOTH_SKIN_PN_VTABLE_RVA)?;
+    let expected_vtable =
+        base.checked_add(crate::compatibility::rva(ER_CLOTH_SKIN_PN_VTABLE_RVA))?;
     trace.expected = expected_vtable;
     if vtable != expected_vtable {
         return None;
@@ -6558,7 +6692,8 @@ fn skin_normal_runtime_guard_rejects_changed_entry_vtable_and_calls() {
         image[at..at + raw.len()].copy_from_slice(raw);
     }
     let slot = ER_CLOTH_SKIN_PN_VTABLE_RVA + 0x20;
-    image[slot..slot + 8].copy_from_slice(&(base + ER_CLOTH_SKIN_PN_RVA).to_le_bytes());
+    image[slot..slot + 8]
+        .copy_from_slice(&(base + crate::compatibility::rva(ER_CLOTH_SKIN_PN_RVA)).to_le_bytes());
     assert!(validate_skin_normal_runtime(base));
     for (at, raw) in entries {
         for i in 0..raw.len() {
@@ -7269,9 +7404,9 @@ fn fifth_stack_argument_u8(stack_pointer: usize) -> u8 {
 }
 
 fn module_relative_rva(module_base: usize, address: usize) -> Option<usize> {
-    let module_end = module_base.checked_add(ER_SIZE_OF_IMAGE as usize)?;
+    let module_end = module_base.checked_add(crate::compatibility::image_size())?;
     if address >= module_base && address < module_end {
-        Some(address - module_base)
+        Some(crate::compatibility::canonical_rva(address - module_base))
     } else {
         None
     }
@@ -7543,13 +7678,13 @@ pub(crate) fn collider_rotation_scope(child: usize, collider: usize) -> Option<f
     if !HOOKS_READY.load(Ordering::Acquire)
         || base == 0
         || !valid_active_scale(scale)
-        || read_usize(child)? != base.checked_add(0x2D872A0)?
-        || read_usize(collider)? != base.checked_add(0x2D8B758)?
+        || read_usize(child)? != base.checked_add(crate::compatibility::rva(0x2D872A0))?
+        || read_usize(collider)? != base.checked_add(crate::compatibility::rva(0x2D8B758))?
     {
         return None;
     }
     let sim = read_usize(child.checked_add(0x18)?)?;
-    if read_usize(sim)? != base.checked_add(0x2D8B6F8)? {
+    if read_usize(sim)? != base.checked_add(crate::compatibility::rva(0x2D8B6F8))? {
         return None;
     }
     let root = read_usize(child.checked_add(0x268)?)?;
@@ -7711,13 +7846,13 @@ pub(crate) fn diagnostic_targets() -> Option<[crate::cloth_diagnostic::Identity;
                     return None;
                 }
                 let child = read_usize(children.checked_add(index * 8)?)?;
-                if read_usize(child) != Some(base + 0x2D872A0)
+                if read_usize(child) != Some(base + crate::compatibility::rva(0x2D872A0))
                     || read_usize(child.checked_add(0x268)?) != Some(root)
                 {
                     return None;
                 }
                 let sim = read_usize(child.checked_add(0x18)?)?;
-                if read_usize(sim) != Some(base + 0x2D8B6F8) {
+                if read_usize(sim) != Some(base + crate::compatibility::rva(0x2D8B6F8)) {
                     return None;
                 }
                 let count = bounded_i32_count(sim.checked_add(0x48)?, 512)?;
@@ -8124,17 +8259,19 @@ mod tests {
         let player_address = player.as_ptr() as usize;
         player[0x648 / 8] = assembly.as_ptr() as usize;
         player[0x50 / 8] = 0x123456;
-        assembly[0] = base + crate::cloth_owner_scope::ASSEMBLY_VTABLE_RVA;
+        assembly[0] =
+            base + crate::compatibility::rva(crate::cloth_owner_scope::ASSEMBLY_VTABLE_RVA);
         assembly[1] = player[0x50 / 8];
         for i in 0..3 {
             assembly[(0x38 + i * 8) / 8] = models[i].as_ptr() as usize;
-            models[i][0] = base + crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA;
+            models[i][0] =
+                base + crate::compatibility::rva(crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA);
             models[i][0x130 / 8] = owners[i].as_ptr() as usize;
-            owners[i][0] = base + ER_CLOTH_MODEL_VTABLE_RVA;
+            owners[i][0] = base + crate::compatibility::rva(ER_CLOTH_MODEL_VTABLE_RVA);
             owners[i][0x120 / 8] = inputs[i].as_ptr() as usize;
             owners[i][0x40 / 8] = inners[i].as_ptr() as usize;
-            inputs[i][0] = base + ER_POSE_IMPORTER_VTABLE_RVA;
-            inners[i][0] = base + ER_CLOTH_INNER_VTABLE_RVA;
+            inputs[i][0] = base + crate::compatibility::rva(ER_POSE_IMPORTER_VTABLE_RVA);
+            inners[i][0] = base + crate::compatibility::rva(ER_CLOTH_INNER_VTABLE_RVA);
             inners[i][0x30 / 8] = cores[i].as_ptr() as usize;
             inners[i][0x60 / 8] = 1;
             child_objects[i][3] = sims[i].as_mut_ptr() as usize;
@@ -10467,12 +10604,12 @@ mod tests {
         let base = 0x0001_4000_0000_usize;
         assert_eq!(module_relative_rva(base, base), Some(0));
         assert_eq!(
-            module_relative_rva(base, base + ER_SIZE_OF_IMAGE as usize - 1),
-            Some(ER_SIZE_OF_IMAGE as usize - 1)
+            module_relative_rva(base, base + crate::compatibility::image_size() - 1),
+            Some(crate::compatibility::image_size() - 1)
         );
         assert_eq!(module_relative_rva(base, base - 1), None);
         assert_eq!(
-            module_relative_rva(base, base + ER_SIZE_OF_IMAGE as usize),
+            module_relative_rva(base, base + crate::compatibility::image_size()),
             None
         );
     }

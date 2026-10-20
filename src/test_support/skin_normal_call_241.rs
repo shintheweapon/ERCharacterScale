@@ -5,7 +5,7 @@ fn skin_normal_call_241(op: usize, context: usize) -> Option<SkinNormalCall> {
     let scale = current_scale();
     if !HOOKS_READY.load(Ordering::Acquire)
         || !valid_active_scale(scale)
-        || read_usize(op)? != base.checked_add(ER_CLOTH_SKIN_PN_VTABLE_RVA)?
+        || read_usize(op)? != base.checked_add(crate::compatibility::rva(ER_CLOTH_SKIN_PN_VTABLE_RVA))?
     {
         return None;
     }

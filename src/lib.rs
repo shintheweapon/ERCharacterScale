@@ -20,6 +20,7 @@ mod cloth_local_scale;
 mod cloth_mesh_scale;
 mod cloth_owner_scope;
 mod cloth_render_scale;
+mod compatibility;
 mod config;
 pub mod equipment_retarget;
 mod equipment_retarget_native;
@@ -413,6 +414,10 @@ fn run_task_thread(hmodule: usize) {
         log::line(format_args!(
             "[ERCS-CONFIG] scaling disabled by configuration"
         ));
+        return;
+    }
+    if let Err(error) = eldenring::initialize_game_bindings() {
+        log::line(format_args!("[ERCS-COMPAT] rejected before hooks: {error}"));
         return;
     }
     let hook_started = Instant::now();

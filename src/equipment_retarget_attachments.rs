@@ -38,7 +38,9 @@ impl Route {
 
 fn capture(session: Arc<Session>, slot: usize, base: usize) -> Option<Route> {
     let equipment = ptr(slot)?;
-    if ptr(equipment) != Some(base + crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA) {
+    if ptr(equipment)
+        != Some(base + crate::compatibility::rva(crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA))
+    {
         return None;
     }
     let item = ptr(equipment + 0x10)?;
@@ -46,18 +48,18 @@ fn capture(session: Arc<Session>, slot: usize, base: usize) -> Option<Route> {
         return None;
     }
     let transform = ptr(equipment + 0x20)?;
-    if ptr(transform) != Some(base + 0x2B6ED78) {
+    if ptr(transform) != Some(base + crate::compatibility::rva(0x2B6ED78)) {
         return None;
     }
     let mut edges = vec![
         (slot, equipment),
         (
             equipment,
-            base + crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA,
+            base + crate::compatibility::rva(crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA),
         ),
         (equipment + 0x10, item),
         (equipment + 0x20, transform),
-        (transform, base + 0x2B6ED78),
+        (transform, base + crate::compatibility::rva(0x2B6ED78)),
     ];
     let mut get = |at| {
         let value = ptr(at)?;
@@ -66,7 +68,7 @@ fn capture(session: Arc<Session>, slot: usize, base: usize) -> Option<Route> {
     };
     let holder = get(transform + 0x50)?;
     let node = get(holder)?;
-    if get(node)? != base + 0x2B6F878 {
+    if get(node)? != base + crate::compatibility::rva(0x2B6F878) {
         return None;
     }
     let record = get(node + 0x78)?;
@@ -74,12 +76,12 @@ fn capture(session: Arc<Session>, slot: usize, base: usize) -> Option<Route> {
         return None;
     }
     let dummy_provider = get(node + 0xA8)?;
-    if get(dummy_provider)? != base + 0x2B70598 {
+    if get(dummy_provider)? != base + crate::compatibility::rva(0x2B70598) {
         return None;
     }
     let holder = get(dummy_provider + 0x50)?;
     let array = get(holder)?;
-    if get(array)? != base + 0x2B6EB88 {
+    if get(array)? != base + crate::compatibility::rva(0x2B6EB88) {
         return None;
     }
     let world_array = get(array + 0x70)?;
@@ -89,12 +91,12 @@ fn capture(session: Arc<Session>, slot: usize, base: usize) -> Option<Route> {
     }
     let holder = get(array + 0x50)?;
     let modifier = get(holder)?;
-    if get(modifier)? != base + 0x2B708D0 {
+    if get(modifier)? != base + crate::compatibility::rva(0x2B708D0) {
         return None;
     }
     let holder = get(modifier + 0x70)?;
     let animation = get(holder)?;
-    if get(animation)? != base + 0x2B6F2C8 {
+    if get(animation)? != base + crate::compatibility::rva(0x2B6F2C8) {
         return None;
     }
     let skeleton = get(animation + 0x68)?;

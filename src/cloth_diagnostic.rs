@@ -837,9 +837,9 @@ fn byte(address: usize) -> Option<u8> {
     Some(unsafe { (address as *const u8).read() })
 }
 fn layout(i: Identity) -> Option<Layout> {
-    if ptr(i.child)? != i.base + 0x2D872A0
+    if ptr(i.child)? != i.base + crate::compatibility::rva(0x2D872A0)
         || ptr(i.child.checked_add(0x18)?)? != i.sim
-        || ptr(i.sim)? != i.base + 0x2D8B6F8
+        || ptr(i.sim)? != i.base + crate::compatibility::rva(0x2D8B6F8)
         || ptr(i.child.checked_add(0x268)?)? != i.root
         || count(i.sim.checked_add(0x48)?, 512)? != i.count
     {
@@ -856,7 +856,7 @@ fn layout(i: Identity) -> Option<Layout> {
     })
 }
 fn constraint_member(i: Identity, stage: usize, object: usize) -> Option<()> {
-    if ptr(object)? != i.base + VTABLES[stage] {
+    if ptr(object)? != i.base + crate::compatibility::rva(VTABLES[stage]) {
         return None;
     }
     for (p, n) in [(0x88, 0x90), (0x98, 0xA0)] {
@@ -951,7 +951,7 @@ fn collider_before(r: &mut Record) -> Option<()> {
 fn colliders(r: &mut Record, after: bool) -> Option<()> {
     for c in 0..r.layout.collider_count {
         let object = ptr(r.layout.colliders.checked_add(c * 8)?)?;
-        if ptr(object)? != r.identity.base + 0x2D8B758 {
+        if ptr(object)? != r.identity.base + crate::compatibility::rva(0x2D8B758) {
             return None;
         }
         if after
@@ -974,7 +974,9 @@ fn colliders(r: &mut Record, after: bool) -> Option<()> {
         )?;
         if !after {
             let shape = ptr(object.checked_add(0x88)?)?;
-            let size = match ptr(shape)?.checked_sub(r.identity.base)? {
+            let size = match crate::compatibility::canonical_rva(
+                ptr(shape)?.checked_sub(r.identity.base)?,
+            ) {
                 0x2D7DBC8 => 0xB0,
                 0x2D896D0 => 0x60,
                 _ => 0x10,
@@ -988,11 +990,12 @@ fn consumer_colliders(r: &mut Record, after: bool) -> Option<()> {
     for c in 0..r.layout.consumer_count {
         let object = r.layout.consumer_colliders.checked_add(c * 0xA0)?;
         let shape = ptr(object.checked_add(0x88)?)?;
-        let shape_size = match ptr(shape)?.checked_sub(r.identity.base)? {
-            0x2D7DBC8 => 0xB0,
-            0x2D896D0 => 0x60,
-            _ => 0x20, // Explicit unknown type header, never guessed larger read.
-        };
+        let shape_size =
+            match crate::compatibility::canonical_rva(ptr(shape)?.checked_sub(r.identity.base)?) {
+                0x2D7DBC8 => 0xB0,
+                0x2D896D0 => 0x60,
+                _ => 0x20, // Explicit unknown type header, never guessed larger read.
+            };
         if after
             && !r
                 .blocks
@@ -1024,7 +1027,7 @@ fn contact_inputs(r: &mut Record) -> Option<()> {
     }
     let shape = ptr(r.object + 0x88)?;
     let expected = if r.stage == 8 { 0x2D896D0 } else { 0x2D7DBC8 };
-    if ptr(shape)? != r.identity.base + expected {
+    if ptr(shape)? != r.identity.base + crate::compatibility::rva(expected) {
         return None;
     }
     let n = count(r.contact.indices.checked_add(8)?, r.identity.count)?;
@@ -1092,7 +1095,11 @@ fn capture_runtime_action_metadata(r: &mut Record) -> Option<()> {
         }
         let vtable = ptr(action)?;
         r.copy("runtime_action_header", index, action, 16)?;
-        if vtable == r.identity.base.checked_add(0x2D89CE0)? {
+        if vtable
+            == r.identity
+                .base
+                .checked_add(crate::compatibility::rva(0x2D89CE0))?
+        {
             r.copy("runtime_simple_wind", index, action, 0x50)?;
         }
     }
@@ -1599,7 +1606,9 @@ pub(crate) fn observe_skin(
                 return Some(());
             }
         }
-        if ptr(op)? != target.base + 0x2D86308 || !identity_current(*target) {
+        if ptr(op)? != target.base + crate::compatibility::rva(0x2D86308)
+            || !identity_current(*target)
+        {
             return None;
         }
         let mut coverage = match s.skin.try_lock() {
@@ -1887,32 +1896,38 @@ fn dispatch(stage: usize, registers: *mut Registers, original: usize) -> usize {
 }
 fn compatible(base: usize) -> bool {
     (0..STAGES).all(|s| {
-        let Some(address) = base.checked_add(RVAS[s]) else {
+        let Some(address) = base.checked_add(crate::compatibility::rva(RVAS[s])) else {
             return false;
         };
         if crate::memory_query::accessible_region(address, PROLOGUES[s].len(), false).is_none() {
             return false;
         }
         let bytes = unsafe { std::slice::from_raw_parts(address as *const u8, PROLOGUES[s].len()) };
-        bytes == PROLOGUES[s] && (VTABLES[s] == 0 || ptr(base + VTABLES[s] + 0x30) == Some(address))
+        crate::compatibility::matches_code(RVAS[s], bytes, PROLOGUES[s])
+            && (VTABLES[s] == 0
+                || ptr(base + crate::compatibility::rva(VTABLES[s]) + 0x30) == Some(address))
     }) && CONTACT_SEAMS
         .iter()
         .chain(DISPATCH_SITES.iter())
         .all(|&(rva, expected)| {
-            let Some(address) = base.checked_add(rva) else {
+            let Some(address) = base.checked_add(crate::compatibility::rva(rva)) else {
                 return false;
             };
             if crate::memory_query::accessible_region(address, expected.len(), false).is_none() {
                 return false;
             }
-            unsafe { std::slice::from_raw_parts(address as *const u8, expected.len()) == expected }
+            crate::compatibility::matches_code(
+                rva,
+                unsafe { std::slice::from_raw_parts(address as *const u8, expected.len()) },
+                expected,
+            )
         })
 }
 pub(crate) fn install(base: usize) {
     if SESSION.get().is_some() {
         return;
     }
-    if !crate::memory_query::scoped(|| compatible(base) && ordered::compatible(base)) {
+    if !crate::memory_query::scoped(|| layout_supported(base)) {
         crate::log::line(format_args!(
             "[ERPS-SYNC253] disabled: native entry/vtable mismatch; scaling unchanged"
         ));
@@ -1946,7 +1961,7 @@ pub(crate) fn install(base: usize) {
     {
         let hook = unsafe {
             hook_closure_jmp_back(
-                base + rva,
+                base + crate::compatibility::rva(*rva),
                 move |r| observe_dispatch(site, r),
                 CallbackOption::None,
                 HookFlags::empty(),
@@ -1963,7 +1978,7 @@ pub(crate) fn install(base: usize) {
     for (stage, rva) in RVAS.iter().copied().enumerate() {
         let hook = unsafe {
             hook_closure_retn(
-                base + rva,
+                base + crate::compatibility::rva(rva),
                 move |r, o| dispatch(stage, r, o),
                 CallbackOption::None,
                 HookFlags::empty(),
@@ -2334,6 +2349,10 @@ fn write_mesh_boundary(sink: &mut impl Write, mesh: &MeshBoundary) -> io::Result
     sink.write_all(b"}")
 }
 
+pub(crate) fn layout_supported(base: usize) -> bool {
+    compatible(base) && ordered::compatible(base)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2344,7 +2363,7 @@ mod tests {
         let unknown = [0xDEADusize, 0];
         let mut normals = [0.0f32, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
         let base = 0x100000usize;
-        wind[..2].copy_from_slice(&[(base + 0x2D89CE0) as u32, 0]);
+        wind[..2].copy_from_slice(&[(base + crate::compatibility::rva(0x2D89CE0)) as u32, 0]);
         wind[0x20 / 4] = 1.0f32.to_bits();
         wind[0x3C / 4] = 2.0f32.to_bits();
         wind[0x40 / 4] = 3.0f32.to_bits();
@@ -3560,30 +3579,34 @@ mod tests {
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     PROLOGUES[stage].as_ptr(),
-                    (base + rva) as *mut u8,
+                    (base + crate::compatibility::rva(rva)) as *mut u8,
                     PROLOGUES[stage].len(),
                 );
             }
             if VTABLES[stage] != 0 {
-                memory[(VTABLES[stage] + 0x30) / 8] = base + rva;
+                memory[(VTABLES[stage] + 0x30) / 8] = base + crate::compatibility::rva(rva);
             }
         }
         for &(rva, bytes) in CONTACT_SEAMS.iter().chain(DISPATCH_SITES.iter()) {
             unsafe {
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), (base + rva) as *mut u8, bytes.len());
+                std::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    (base + crate::compatibility::rva(rva)) as *mut u8,
+                    bytes.len(),
+                );
             }
         }
         assert!(crate::memory_query::scoped(|| compatible(base)));
         for (stage, rva) in RVAS.iter().copied().enumerate() {
             unsafe {
-                *((base + rva) as *mut u8) ^= 1;
+                *((base + crate::compatibility::rva(rva)) as *mut u8) ^= 1;
             }
             assert!(
                 !crate::memory_query::scoped(|| compatible(base)),
                 "stage {stage}"
             );
             unsafe {
-                *((base + rva) as *mut u8) ^= 1;
+                *((base + crate::compatibility::rva(rva)) as *mut u8) ^= 1;
             }
         }
         memory[(VTABLES[1] + 0x30) / 8] ^= 8;
@@ -3591,11 +3614,11 @@ mod tests {
         memory[(VTABLES[1] + 0x30) / 8] ^= 8;
         for &(rva, _) in CONTACT_SEAMS.iter().chain(DISPATCH_SITES.iter()) {
             unsafe {
-                *((base + rva) as *mut u8) ^= 1;
+                *((base + crate::compatibility::rva(rva)) as *mut u8) ^= 1;
             }
             assert!(!crate::memory_query::scoped(|| compatible(base)));
             unsafe {
-                *((base + rva) as *mut u8) ^= 1;
+                *((base + crate::compatibility::rva(rva)) as *mut u8) ^= 1;
             }
         }
     }

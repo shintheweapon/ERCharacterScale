@@ -182,37 +182,13 @@ pub(crate) fn install(base: usize) -> bool {
     if READY.load(Ordering::Acquire) {
         return BASE.load(Ordering::Acquire) == base;
     }
-    for (rva, slot) in [(RANGE_RVA, 0x40), (MATRIX_RANGE_RVA, 0x38)] {
-        let mut guard = vec![0u8; RANGE_GUARD.len()];
-        if !read(base + rva, &mut guard)
-            || guard != RANGE_GUARD
-            || ptr(base + MAPPER_VTABLE + slot) != Some(base + rva)
-        {
-            return false;
-        }
-    }
-    for (rva, expected) in [
-        (LAZY_MODEL_CONSUMER_RVA, LAZY_MODEL_CONSUMER_GUARD),
-        (MOTION_RVA, MOTION_GUARD),
-        (CAMERA_RVA, CAMERA_GUARD),
-        (CAMERA_DISTANCE_RVA, CAMERA_DISTANCE_GUARD),
-        (recovery::RESET_RVA, recovery::RESET_GUARD),
-        (recovery::CONSUME_RVA, recovery::CONSUME_GUARD),
-        (attachments::RVA, attachments::GUARD),
-        (dummies::RVAS[0], dummies::GUARD),
-        (dummies::RVAS[1], dummies::GUARD),
-        (dummies::AFFINE_RVAS[0], dummies::AFFINE_GUARDS[0]),
-        (dummies::AFFINE_RVAS[1], dummies::AFFINE_GUARDS[1]),
-    ] {
-        let mut actual = vec![0; expected.len()];
-        if !read(base + rva, &mut actual) || actual != expected {
-            return false;
-        }
+    if !layout_supported(base) {
+        return false;
     }
     BASE.store(base, Ordering::Release);
     let hook = unsafe {
         hook_closure_retn(
-            base + RANGE_RVA,
+            base + crate::compatibility::rva(RANGE_RVA),
             render_hook,
             CallbackOption::None,
             HookFlags::empty(),
@@ -223,7 +199,7 @@ pub(crate) fn install(base: usize) -> bool {
     };
     let matrix_hook = unsafe {
         hook_closure_retn(
-            base + MATRIX_RANGE_RVA,
+            base + crate::compatibility::rva(MATRIX_RANGE_RVA),
             matrix_render_hook,
             CallbackOption::None,
             HookFlags::empty(),
@@ -232,22 +208,28 @@ pub(crate) fn install(base: usize) -> bool {
     let Ok(matrix_hook) = matrix_hook else {
         return false;
     };
-    let motion_hook = unsafe { mid_hook::install(base + MOTION_RVA, motion_hook) };
+    let motion_hook =
+        unsafe { mid_hook::install(base + crate::compatibility::rva(MOTION_RVA), motion_hook) };
     let Ok(motion_hook) = motion_hook else {
         return false;
     };
-    let camera_hook = unsafe { mid_hook::install(base + CAMERA_RVA, camera_hook) };
+    let camera_hook =
+        unsafe { mid_hook::install(base + crate::compatibility::rva(CAMERA_RVA), camera_hook) };
     let Ok(camera_hook) = camera_hook else {
         return false;
     };
-    let camera_distance_hook =
-        unsafe { mid_hook::install(base + CAMERA_DISTANCE_RVA, camera_distance_hook) };
+    let camera_distance_hook = unsafe {
+        mid_hook::install(
+            base + crate::compatibility::rva(CAMERA_DISTANCE_RVA),
+            camera_distance_hook,
+        )
+    };
     let Ok(camera_distance_hook) = camera_distance_hook else {
         return false;
     };
     let attachment_hook = unsafe {
         hook_closure_retn(
-            base + attachments::RVA,
+            base + crate::compatibility::rva(attachments::RVA),
             attachments::hook,
             CallbackOption::None,
             HookFlags::empty(),
@@ -260,7 +242,7 @@ pub(crate) fn install(base: usize) -> bool {
     for rva in dummies::RVAS {
         let Ok(hook) = (unsafe {
             hook_closure_retn(
-                base + rva,
+                base + crate::compatibility::rva(rva),
                 dummies::hook,
                 CallbackOption::None,
                 HookFlags::empty(),
@@ -273,7 +255,7 @@ pub(crate) fn install(base: usize) -> bool {
     for rva in dummies::AFFINE_RVAS {
         let Ok(hook) = (unsafe {
             hook_closure_retn(
-                base + rva,
+                base + crate::compatibility::rva(rva),
                 dummies::affine_hook,
                 CallbackOption::None,
                 HookFlags::empty(),
@@ -318,32 +300,40 @@ struct Key {
 impl Key {
     fn current(&self, base: usize) -> bool {
         ptr(self.player + 0x648) == Some(self.assembly)
-            && ptr(self.assembly) == Some(base + crate::cloth_owner_scope::ASSEMBLY_VTABLE_RVA)
+            && ptr(self.assembly)
+                == Some(
+                    base + crate::compatibility::rva(crate::cloth_owner_scope::ASSEMBLY_VTABLE_RVA),
+                )
             && ptr(self.slot) == Some(self.equipment)
-            && ptr(self.equipment) == Some(base + crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA)
+            && ptr(self.equipment)
+                == Some(
+                    base + crate::compatibility::rva(
+                        crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA,
+                    ),
+                )
             && ptr(self.equipment + 0x10) == Some(self.item)
             && ptr(self.item + 0x68) == Some(self.resource)
             && ptr(self.player + 0x398) == Some(self.source)
-            && ptr(self.source) == Some(base + INPUT_VTABLE)
+            && ptr(self.source) == Some(base + crate::compatibility::rva(INPUT_VTABLE))
             && ptr(self.source + 0x48) == Some(self.source_meta)
             && self.route.iter().all(|&(at, value)| ptr(at) == Some(value))
             && self
                 .mappers
                 .iter()
-                .all(|m| ptr(*m) == Some(base + MAPPER_VTABLE))
+                .all(|m| ptr(*m) == Some(base + crate::compatibility::rva(MAPPER_VTABLE)))
             && ptr(self.equipment + 0x130) == Some(self.owner)
             && (self.owner == 0
                 || (ptr(self.equipment + 0x130) == Some(self.owner)
-                    && ptr(self.owner) == Some(base + 0x2B92A60)
+                    && ptr(self.owner) == Some(base + crate::compatibility::rva(0x2B92A60))
                     && ptr(self.owner + 0x120) == Some(self.input)
                     && ptr(self.owner + 0x40) == Some(self.inner)
-                    && ptr(self.inner) == Some(base + 0x329A2F8)
+                    && ptr(self.inner) == Some(base + crate::compatibility::rva(0x329A2F8))
                     && ptr(self.inner + 0x30) == Some(self.core)
                     // core+18 belongs to a distinct native object; it is not
                     // an owner back-pointer. The forward chain above binds
                     // this exact core to the selected equipment's inner.
-                    && ptr(self.core) == Some(base + CORE_VTABLE)
-                    && ptr(self.input) == Some(base + INPUT_VTABLE)
+                    && ptr(self.core) == Some(base + crate::compatibility::rva(CORE_VTABLE))
+                    && ptr(self.input) == Some(base + crate::compatibility::rva(INPUT_VTABLE))
                     && ptr(self.input + 0x48) == Some(self.input_meta)))
     }
 }
@@ -462,8 +452,8 @@ fn find_mappers(
     if start == 0 || depth > 8 || !visited.insert(start) {
         return Some(());
     }
-    let kind = ptr(start)?.checked_sub(base)?;
-    route.push((start, base + kind));
+    let kind = crate::compatibility::canonical_rva(ptr(start)?.checked_sub(base)?);
+    route.push((start, base + crate::compatibility::rva(kind)));
     match kind {
         MAPPER_VTABLE => {
             if !result.contains(&start) {
@@ -671,7 +661,9 @@ pub(crate) fn refresh(player: usize, scale: f32, generation: u64) {
             return;
         };
         let base = BASE.load(Ordering::Acquire);
-        if ptr(assembly) != Some(base + crate::cloth_owner_scope::ASSEMBLY_VTABLE_RVA) {
+        if ptr(assembly)
+            != Some(base + crate::compatibility::rva(crate::cloth_owner_scope::ASSEMBLY_VTABLE_RVA))
+        {
             return;
         }
         let Some(source) = ptr(player + 0x398) else {
@@ -722,7 +714,13 @@ pub(crate) fn refresh(player: usize, scale: f32, generation: u64) {
             let capture = || -> Option<(Key, bool)> {
                 let slot = assembly + 0x28 + slot_index * 8;
                 let equipment = ptr(slot)?;
-                if ptr(equipment) != Some(base + crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA) {
+                if ptr(equipment)
+                    != Some(
+                        base + crate::compatibility::rva(
+                            crate::cloth_owner_scope::EQUIPMENT_VTABLE_RVA,
+                        ),
+                    )
+                {
                     return None;
                 }
                 let item = ptr(equipment + 0x10)?;
@@ -730,7 +728,7 @@ pub(crate) fn refresh(player: usize, scale: f32, generation: u64) {
                 let force = settings.policy(&name)?;
                 let resource = ptr(item + 0x68)?;
                 let exporter = ptr(item + 0x658)?;
-                if ptr(exporter) != Some(base + 0x2B701A0)
+                if ptr(exporter) != Some(base + crate::compatibility::rva(0x2B701A0))
                     || ptr(exporter + 0x100) != Some(resource)
                 {
                     return None;
@@ -738,7 +736,7 @@ pub(crate) fn refresh(player: usize, scale: f32, generation: u64) {
                 let mut mappers = Vec::new();
                 let mut route = vec![
                     (item + 0x658, exporter),
-                    (exporter, base + 0x2B701A0),
+                    (exporter, base + crate::compatibility::rva(0x2B701A0)),
                     (exporter + 0x100, resource),
                     (resource + 0x2F8, ptr(resource + 0x2F8)?),
                 ];
@@ -773,18 +771,18 @@ pub(crate) fn refresh(player: usize, scale: f32, generation: u64) {
                 }
                 let owner = ptr(equipment + 0x130)?;
                 let (input, input_meta, inner, core) = if owner != 0 {
-                    if ptr(owner) != Some(base + 0x2B92A60) {
+                    if ptr(owner) != Some(base + crate::compatibility::rva(0x2B92A60)) {
                         return None;
                     }
                     let input = ptr(owner + 0x120)?;
                     if input == source
                         || input == identity.cloth_pose
-                        || ptr(input) != Some(base + INPUT_VTABLE)
+                        || ptr(input) != Some(base + crate::compatibility::rva(INPUT_VTABLE))
                     {
                         return None;
                     }
                     let inner = ptr(owner + 0x40)?;
-                    if ptr(inner) != Some(base + 0x329A2F8) {
+                    if ptr(inner) != Some(base + crate::compatibility::rva(0x329A2F8)) {
                         return None;
                     }
                     (input, ptr(input + 0x48)?, inner, ptr(inner + 0x30)?)
@@ -1024,8 +1022,8 @@ extern "win64" fn camera_hook(registers: *mut Registers) {
     let r = unsafe { &mut *registers };
     let _ = crate::memory_query::scoped(|| -> Option<()> {
         let base = BASE.load(Ordering::Acquire);
-        let world = ptr(base + 0x3D69FF8)?;
-        let manager = ptr(base + 0x3D6D988)?;
+        let world = ptr(base + crate::compatibility::rva(0x3D69FF8))?;
+        let manager = ptr(base + crate::compatibility::rva(0x3D6D988))?;
         adjust_camera(r, base, world, manager)
     });
 }
@@ -1050,9 +1048,15 @@ fn camera_profile(
     if r.r15 as usize != player {
         return None;
     }
-    let cam = ptr(world + 0x1ECE0)?;
+    let cam = ptr(world
+        + if crate::compatibility::is_ww272() {
+            0x1ecf0
+        } else {
+            0x1ece0
+        })?;
     let follow = ptr(cam + 0x60)?;
-    if r.rbx as usize != follow || ptr(follow) != Some(base + 0x2A2ACA0) {
+    if r.rbx as usize != follow || ptr(follow) != Some(base + crate::compatibility::rva(0x2A2ACA0))
+    {
         return None;
     }
     let override_id = i32::from_le_bytes(pose::bytes(&read, manager + 0x50)?);
@@ -1066,8 +1070,8 @@ extern "win64" fn camera_distance_hook(registers: *mut Registers) {
     let r = unsafe { &mut *registers };
     let _ = crate::memory_query::scoped(|| -> Option<()> {
         let base = BASE.load(Ordering::Acquire);
-        let world = ptr(base + 0x3D69FF8)?;
-        let manager = ptr(base + 0x3D6D988)?;
+        let world = ptr(base + crate::compatibility::rva(0x3D69FF8))?;
+        let manager = ptr(base + crate::compatibility::rva(0x3D6D988))?;
         adjust_camera_distance(r, base, world, manager)
     });
 }
@@ -1379,3 +1383,37 @@ fn render_output_is_private(key: &Key, address: usize, length: usize) -> bool {
 #[cfg(test)]
 #[path = "equipment_retarget_native_tests.rs"]
 mod tests;
+
+pub(crate) fn layout_supported(base: usize) -> bool {
+    for (rva, slot) in [(RANGE_RVA, 0x40), (MATRIX_RANGE_RVA, 0x38)] {
+        let mut guard = vec![0u8; RANGE_GUARD.len()];
+        if !read(base + crate::compatibility::rva(rva), &mut guard)
+            || !crate::compatibility::matches_code(rva, &guard, RANGE_GUARD)
+            || ptr(base + crate::compatibility::rva(MAPPER_VTABLE) + slot)
+                != Some(base + crate::compatibility::rva(rva))
+        {
+            return false;
+        }
+    }
+    for (rva, expected) in [
+        (LAZY_MODEL_CONSUMER_RVA, LAZY_MODEL_CONSUMER_GUARD),
+        (MOTION_RVA, MOTION_GUARD),
+        (CAMERA_RVA, CAMERA_GUARD),
+        (CAMERA_DISTANCE_RVA, CAMERA_DISTANCE_GUARD),
+        (recovery::RESET_RVA, recovery::RESET_GUARD),
+        (recovery::CONSUME_RVA, recovery::CONSUME_GUARD),
+        (attachments::RVA, attachments::GUARD),
+        (dummies::RVAS[0], dummies::GUARD),
+        (dummies::RVAS[1], dummies::GUARD),
+        (dummies::AFFINE_RVAS[0], dummies::AFFINE_GUARDS[0]),
+        (dummies::AFFINE_RVAS[1], dummies::AFFINE_GUARDS[1]),
+    ] {
+        let mut actual = vec![0; expected.len()];
+        if !read(base + crate::compatibility::rva(rva), &mut actual)
+            || !crate::compatibility::matches_code(rva, &actual, expected)
+        {
+            return false;
+        }
+    }
+    true
+}

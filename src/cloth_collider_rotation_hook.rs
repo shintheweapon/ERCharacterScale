@@ -61,7 +61,7 @@ fn read_array<const N: usize>(address: usize) -> Option<[f32; N]> {
 }
 
 fn callsite(r: &Registers, base: usize) -> bool {
-    base.checked_add(RETURN) == Some(unsafe { r.get_stack(0) } as usize)
+    base.checked_add(crate::compatibility::rva(RETURN)) == Some(unsafe { r.get_stack(0) } as usize)
         && r.rcx.checked_add(0x20) == Some(r.r8)
         && unsafe { r.get_stack(5) } as u8 == 0
         && f32::from_bits(r.xmm3 as u32).is_finite()
@@ -158,19 +158,12 @@ fn dispatch(base: usize, reg: *mut Registers, original: usize) -> usize {
 }
 
 pub(crate) fn install(base: usize) -> bool {
-    if !memory_query::scoped(|| {
-        SEAMS.iter().all(|&(rva, raw)| {
-            base.checked_add(rva).is_some_and(|p| {
-                memory_query::accessible_region(p, raw.len(), false).is_some()
-                    && unsafe { std::slice::from_raw_parts(p as *const u8, raw.len()) == raw }
-            })
-        })
-    }) {
+    if !layout_supported(base) {
         return false;
     }
     let result = unsafe {
         hook_closure_retn(
-            base + ENTRY,
+            base + crate::compatibility::rva(ENTRY),
             move |r, original| {
                 let child = (*r).rsi as usize;
                 body_scale_port::with_collider_unit(child, || dispatch(base, r, original))
@@ -242,7 +235,7 @@ pub(crate) fn exercise_owned_route_at_scale(
     let prior = unsafe { ((collider + 0x20) as *const [f32; 16]).read_unaligned() };
     unsafe { ((collider + 0x20) as *mut [f32; 16]).write_unaligned(unit) };
     let mut stack = [0u64; 6];
-    stack[0] = (base + RETURN) as u64;
+    stack[0] = (base + crate::compatibility::rva(RETURN)) as u64;
     let mut r: Registers = unsafe { std::mem::zeroed() };
     r.rsp = stack.as_ptr() as u64;
     r.rsi = child as u64;
@@ -307,4 +300,20 @@ pub(crate) fn exercise_owned_route_at_scale(
         }
     });
     unsafe { ((collider + 0x20) as *mut [f32; 16]).write_unaligned(prior) };
+}
+
+pub(crate) fn layout_supported(base: usize) -> bool {
+    memory_query::scoped(|| {
+        SEAMS.iter().all(|&(rva, raw)| {
+            base.checked_add(crate::compatibility::rva(rva))
+                .is_some_and(|p| {
+                    memory_query::accessible_region(p, raw.len(), false).is_some()
+                        && crate::compatibility::matches_code(
+                            rva,
+                            unsafe { std::slice::from_raw_parts(p as *const u8, raw.len()) },
+                            raw,
+                        )
+                })
+        })
+    })
 }

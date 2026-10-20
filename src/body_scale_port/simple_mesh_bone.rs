@@ -12,13 +12,13 @@ const ENTRY_BYTES: &[u8] = &[
 ];
 
 pub(super) fn validate(base: usize) -> bool {
-    bytes_equal(base + ENTRY, ENTRY_BYTES)
-        && read_usize(base + VTABLE + 0x20) == Some(base + ENTRY)
+    bytes_equal(base + crate::compatibility::rva(ENTRY), ENTRY_BYTES)
+        && read_usize(base + crate::compatibility::rva(VTABLE) + 0x20) == Some(base + crate::compatibility::rva(ENTRY))
         // Local bind array, triangle cross, translation composition and store.
-        && bytes_equal(base + 0x15E3579, &[0x4C, 0x8B, 0x4F, 0x50, 0x4C, 0x8B, 0x47, 0x60])
-        && bytes_equal(base + 0x15E3637, &[0x0F, 0xC6, 0xE4, 0xC9, 0x0F, 0x54, 0xE0])
-        && bytes_equal(base + 0x15E36C5, &[0x0F, 0xC6, 0xCA, 0xAA, 0x0F, 0x59, 0xCC])
-        && bytes_equal(base + 0x15E370C, &[0x44, 0x0F, 0x29, 0x40, 0x30])
+        && bytes_equal(base + crate::compatibility::rva(0x15E3579), &[0x4C, 0x8B, 0x4F, 0x50, 0x4C, 0x8B, 0x47, 0x60])
+        && bytes_equal(base + crate::compatibility::rva(0x15E3637), &[0x0F, 0xC6, 0xE4, 0xC9, 0x0F, 0x54, 0xE0])
+        && bytes_equal(base + crate::compatibility::rva(0x15E36C5), &[0x0F, 0xC6, 0xCA, 0xAA, 0x0F, 0x59, 0xCC])
+        && bytes_equal(base + crate::compatibility::rva(0x15E370C), &[0x44, 0x0F, 0x29, 0x40, 0x30])
 }
 
 #[repr(C, align(16))]
@@ -76,13 +76,13 @@ pub(super) fn operator_scope(op: usize, context: usize, vtable: usize) -> Option
     if !HOOKS_READY.load(Ordering::Acquire)
         || base == 0
         || !valid_active_scale(scale)
-        || read_usize(op)? != base.checked_add(vtable)?
+        || read_usize(op)? != base.checked_add(crate::compatibility::rva(vtable))?
     {
         return None;
     }
     let root = read_usize(context.checked_add(0x10)?)?;
     let asset = read_usize(root.checked_add(0x18)?)?;
-    if read_usize(asset)? != base.checked_add(0x2D8B738)? {
+    if read_usize(asset)? != base.checked_add(crate::compatibility::rva(0x2D8B738))? {
         return None;
     }
     let operators = read_usize(asset.checked_add(0x50)?)?;
