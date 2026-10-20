@@ -10,13 +10,17 @@ pub(super) const ENTRY_BYTES: &[u8] = &[
 ];
 
 pub(super) fn validate(base: usize) -> bool {
-    bytes_equal(base + ENTRY, ENTRY_BYTES)
-        && read_usize(base + VTABLE + 0x20) == Some(base + ENTRY)
+    bytes_equal(base + crate::compatibility::rva(ENTRY), ENTRY_BYTES)
+        && read_usize(base + crate::compatibility::rva(VTABLE) + 0x20)
+            == Some(base + crate::compatibility::rva(ENTRY))
         && bytes_equal(
-            base + 0x156673D,
+            base + crate::compatibility::rva(0x156673D),
             &[0x83, 0xBB, 0xC0, 0, 0, 0, 0, 0x7E, 0x2E],
         )
-        && bytes_equal(base + 0x156675C, &[0xE8, 0xBF, 0xE5, 0xFF, 0xFF])
+        && bytes_equal(
+            base + crate::compatibility::rva(0x156675C),
+            &[0xE8, 0xBF, 0xE5, 0xFF, 0xFF],
+        )
 }
 
 pub(super) fn hook(registers: *mut Registers, original: usize) -> usize {

@@ -13,11 +13,12 @@ pub static ERCS_ANIMATION_MOTION_DIAGNOSTICS: [AtomicU64; 2] = [const { AtomicU6
 
 pub(super) fn guard(base: usize) -> bool {
     let mut bytes = [0; GUARD.len()];
-    read(base + RVA, &mut bytes) && bytes == GUARD
+    read(base + crate::compatibility::rva(RVA), &mut bytes)
+        && crate::compatibility::matches_code(RVA, &bytes, GUARD)
 }
 
 pub(super) unsafe fn install(base: usize) -> Result<HookPoint, ilhook::HookError> {
-    unsafe { install_at(base + RVA, callback) }
+    unsafe { install_at(base + crate::compatibility::rva(RVA), callback) }
 }
 
 unsafe fn install_at(

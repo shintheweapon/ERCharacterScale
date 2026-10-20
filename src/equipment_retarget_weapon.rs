@@ -37,8 +37,8 @@ impl GripCache {
             return Some(0);
         }
         // WW2.7.1.0 constructor D220F2 stores the SoloParamRepository here.
-        let repo = pose::pointer(read, base + 0x3D85F58)?;
-        if pose::pointer(read, repo)? != base + 0x2BB84C8 {
+        let repo = pose::pointer(read, base + crate::compatibility::rva(0x3D85F58))?;
+        if pose::pointer(read, repo)? != base + crate::compatibility::rva(0x2BB84C8) {
             return None;
         }
         let holders = u32::from_le_bytes(pose::bytes(read, repo + 0x80)?);

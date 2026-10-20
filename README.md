@@ -1,10 +1,12 @@
+> 2026-10-21 compatibility build: ER App 1.17.2 / EXE 2.7.2.0. The candidate in `dist/er-1.17.2/` passed automated checks and is installed in the main `_GoldenAge` Mod. In-game acceptance is pending. Current spec, hashes, rollback and evidence: [1.17.2 build record](../../Topics/Gameplay/bug-er-1-17-2-dll-compat/build.md). Earlier version/publication notes below retain their original scope.
+
 # ERCharacterScale
 
 **简体中文** | [English](README.en.md)
 
 通过 TOML 配置 Elden Ring 玩家与其他角色的整体体型比例，支持 SpEffect 触发和无条件缩放。
 
-[下载 v2.55.1](https://github.com/KamiyamaShiki0704/ERCharacterScale/releases/tag/v2.55.1) · [配置说明](docs/CONFIGURATION.md) · [版本记录](CHANGELOG.md)
+[下载 v2.55.6](https://github.com/KamiyamaShiki0704/ERCharacterScale/releases/tag/v2.55.6) · [配置说明](docs/CONFIGURATION.md) · [版本记录](CHANGELOG.md)
 
 ## 功能
 
@@ -18,13 +20,15 @@
 
 ## 本次更新
 
-改善坐姿与腿部动画适配、武器和道具挂点对齐，修正部分独立持握武器在双持状态下引起的抬臂。
+本版本使用 `fromsoftware-rs` 构建。
+
+改善同一套新骨架拆分为多个装备部件时的武器、道具和身体 Dummy 对齐。骨架一致的部件共用一次挂点修正，换下其中一件后可由其余部件接替。已通过离线验证，实际分件模型的效果仍待确认。
 
 ## 安装
 
 适用于 **Windows x64、离线 Elden Ring WW2.7.1.0 / game1.17.1**。其他程序版本需要另行验证。
 
-1. 从 [Release 页面](https://github.com/KamiyamaShiki0704/ERCharacterScale/releases/tag/v2.55.1) 下载 `ERCharacterScale-v2.55.1-windows-x64.zip`。
+1. 从 [Release 页面](https://github.com/KamiyamaShiki0704/ERCharacterScale/releases/tag/v2.55.6) 下载 `ERCharacterScale-v2.55.6-windows-x64.zip`。
 2. 将 `ERCharacterScale.dll` 和 `ERCharacterScale.toml` 放在同一目录，并使用现有 DLL 加载器加载该 DLL。
 3. 按需要编辑 TOML，然后启动游戏。之后修改配置文件，需要重启游戏生效。
 

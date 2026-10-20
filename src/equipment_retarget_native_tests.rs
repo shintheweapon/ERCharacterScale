@@ -49,6 +49,197 @@ fn camera_updates_consumed_height_only_and_respects_explicit_camera_override() {
 }
 
 #[test]
+fn camera_locked_distance_follows_body_height_without_changing_enemy_parameters() {
+    let mut fixture = NativeTest::new();
+    refresh(fixture.character.address, 1.0, 1);
+    Arc::get_mut(&mut REGISTRY.write().unwrap()[0])
+        .unwrap()
+        .motion = Some(MotionProfile {
+        leg_ratio: 0.75,
+        height_ratio: 0.6,
+    });
+    let world = fixture._heap.alloc(0x1F000);
+    let camera = fixture._heap.alloc(0x100);
+    let follow = fixture._heap.alloc(0x200);
+    let manager = fixture._heap.alloc(0x100);
+    fixture
+        ._heap
+        .put(world + 0x1E508, fixture.character.address);
+    fixture._heap.put(world + 0x1ECE0, camera);
+    fixture._heap.put(camera + 0x60, follow);
+    fixture._heap.put(follow, TEST_BASE + 0x2A2ACA0);
+    fixture._heap.put(manager + 0x50, -1i32);
+    fixture._heap.put(manager + 0x54, 3251i32);
+    fixture._heap.put(follow + 0x1b4, 6.0f32);
+    let high = 0x1234_5678_9ABC_DEF0_1234_5678_0000_0000u128;
+    let mut r: Registers = unsafe { std::mem::zeroed() };
+    r.r15 = fixture.character.address as u64;
+    r.rbx = follow as u64;
+    r.rcx = follow as u64;
+    r.xmm1 = u128::from(6.0f32.to_bits());
+    r.xmm3 = u128::from(1.42f32.to_bits());
+    for _ in 0..20 {
+        r.xmm0 = high | u128::from(1.0f32.to_bits()); // Native radius / ray length.
+        adjust_camera_distance(&mut r, TEST_BASE, world, manager).unwrap();
+        assert!((f32::from_bits(r.xmm0 as u32) * 6.0 - 3.6).abs() < 1e-6);
+        assert_eq!(r.xmm0 & !u128::from(u32::MAX), high);
+        assert_eq!(r.xmm1, u128::from(6.0f32.to_bits()));
+        assert_eq!(r.xmm3, u128::from(1.42f32.to_bits()));
+        assert_eq!(
+            pose::bytes::<4>(&read, follow + 0x1b4),
+            Some(6.0f32.to_le_bytes())
+        );
+        assert_eq!(
+            pose::bytes::<4>(&read, manager + 0x54),
+            Some(3251i32.to_le_bytes())
+        );
+    }
+    fixture._heap.put(manager + 0x50, 220i32);
+    r.xmm0 = high | u128::from(1.0f32.to_bits());
+    assert!(adjust_camera_distance(&mut r, TEST_BASE, world, manager).is_none());
+    assert_eq!(f32::from_bits(r.xmm0 as u32), 1.0);
+    fixture._heap.put(manager + 0x50, -1i32);
+    r.rbx += 8;
+    assert!(adjust_camera_distance(&mut r, TEST_BASE, world, manager).is_none());
+}
+
+#[test]
+fn invalid_simulated_hair_does_not_discard_body_retargeting_or_propagate_nan() {
+    let fixture = NativeTest::new();
+    refresh(fixture.character.address, 1.0, 1);
+    let mut private = solver_input(fixture.inner, fixture.input + 0x48, fixture.transform).unwrap();
+    private.context();
+    private.completed();
+    fixture
+        ._heap
+        .put(fixture.input_models + 3 * 48, [f32::NAN; 12]);
+    let output = fixture.draw();
+    assert!(
+        (output[2][3] - 1.1).abs() < 1e-6,
+        "bad cloth discarded the valid body pose"
+    );
+    assert!(
+        output.iter().flatten().all(|v| v.is_finite()),
+        "invalid cloth reached rendering"
+    );
+    assert!(
+        (output[3][3] - 1.3).abs() < 1e-6,
+        "hair did not fall back to its target pose"
+    );
+}
+
+fn add_recovery_group(fixture: &mut NativeTest) -> (usize, usize, usize) {
+    let core = ptr(fixture.inner + 0x30).unwrap();
+    let h = &mut fixture._heap;
+    let holders = h.alloc(8);
+    let holder = h.alloc(0x60);
+    let root = h.alloc(0x120);
+    let asset = h.alloc(0x80);
+    let children = h.alloc(8);
+    let child = h.alloc(0x60);
+    let states = h.alloc(8);
+    let state = h.alloc(0x60);
+    let indices = h.alloc(4);
+    for (at, value) in [
+        (core + 0x28, holders),
+        (core + 0x30, holders + 8),
+        (holders, holder),
+        (holder, root),
+        (root + 0x18, asset),
+        (root + 0x40, children),
+        (children, child),
+        (asset + 0x60, states),
+        (states, state),
+        (state + 0x50, indices),
+    ] {
+        h.put(at, value);
+    }
+    h.put(root + 0x48, 1i32);
+    h.put(root + 0x114, 0i32);
+    h.put(asset + 0x68, 1i32);
+    h.put(state + 0x58, 1i32);
+    h.put(indices, 0i32);
+    h.put(child + 0x50, 17u32);
+    (holder, child, indices)
+}
+
+#[test]
+fn bad_physics_requests_native_reset_once_and_revoked_input_cannot_reset() {
+    let mut fixture = NativeTest::new();
+    let (holder, child, _) = add_recovery_group(&mut fixture);
+    refresh(fixture.character.address, 1.0, 1);
+    let mut input = solver_input(fixture.inner, fixture.input + 0x48, fixture.transform).unwrap();
+    input.context();
+    input.completed();
+    fixture
+        ._heap
+        .put(fixture.input_models + 3 * 48, [f32::NAN; 12]);
+    assert!((fixture.draw()[2][3] - 1.1).abs() < 1e-6);
+    let mut repair = solver_input(fixture.inner, fixture.input + 0x48, fixture.transform).unwrap();
+    assert_eq!(
+        pose::bytes::<4>(&read, child + 0x50),
+        Some(17u32.to_le_bytes())
+    );
+    repair.context();
+    assert_eq!(
+        pose::bytes::<4>(&read, child + 0x50),
+        Some(0u32.to_le_bytes())
+    );
+    assert_eq!(pose::bytes::<1>(&read, holder + 0x4f), Some([1]));
+    fixture._heap.put(child + 0x50, 9u32);
+    fixture._heap.put(holder + 0x4f, 0u8);
+    repair.context();
+    assert_eq!(
+        pose::bytes::<4>(&read, child + 0x50),
+        Some(9u32.to_le_bytes())
+    );
+    repair.completed();
+    fixture.draw();
+    let mut revoked = solver_input(fixture.inner, fixture.input + 0x48, fixture.transform).unwrap();
+    fixture._heap.put(fixture.slot, 0usize);
+    revoked.context();
+    assert_eq!(
+        pose::bytes::<4>(&read, child + 0x50),
+        Some(9u32.to_le_bytes())
+    );
+    assert_eq!(pose::bytes::<1>(&read, holder + 0x4f), Some([0]));
+}
+
+#[test]
+fn unreadable_or_rebuilt_pose_and_bad_active_indices_do_not_reset_physics() {
+    let mut fixture = NativeTest::new();
+    let (holder, child, indices) = add_recovery_group(&mut fixture);
+    refresh(fixture.character.address, 1.0, 1);
+    let mut input = solver_input(fixture.inner, fixture.input + 0x48, fixture.transform).unwrap();
+    input.context();
+    input.completed();
+    fixture._heap.put(fixture.input + 0x48 + 0x10, 3i32);
+    assert!((fixture.draw()[2][3] - 1.1).abs() < 1e-6);
+    let pending = REGISTRY.read().unwrap()[0]
+        .work
+        .lock()
+        .unwrap()
+        .recovery_pending;
+    assert!(
+        !pending,
+        "layout failure was classified as corrupt simulation"
+    );
+    fixture._heap.put(fixture.input + 0x48 + 0x10, 4i32);
+    fixture
+        ._heap
+        .put(fixture.input_models + 3 * 48, [f32::NAN; 12]);
+    fixture.draw();
+    fixture._heap.put(indices, 1i32); // Outside the one-child array.
+    let mut repair = solver_input(fixture.inner, fixture.input + 0x48, fixture.transform).unwrap();
+    repair.context();
+    assert_eq!(
+        pose::bytes::<4>(&read, child + 0x50),
+        Some(17u32.to_le_bytes())
+    );
+    assert_eq!(pose::bytes::<1>(&read, holder + 0x4f), Some([0]));
+}
+
+#[test]
 fn motion_consumer_scales_fresh_animation_only_and_revokes_on_unequip() {
     let fixture = NativeTest::new();
     refresh(fixture.character.address, 2.0, 1);
@@ -89,6 +280,144 @@ fn motion_consumer_scales_fresh_animation_only_and_revokes_on_unequip() {
 struct Heap {
     data: Vec<u128>,
     cursor: usize,
+}
+
+#[test]
+fn repeated_session_validation_reuses_permissions_but_reads_identity_fresh() {
+    let fixture = NativeTest::new();
+    refresh(fixture.character.address, 1.0, 1);
+    let session = REGISTRY.read().unwrap()[0].clone();
+    crate::memory_query::scoped(|| {
+        assert!(session.current());
+        let before = crate::memory_query::query_count();
+        assert!(session.current());
+        let repeated = crate::memory_query::query_count() - before;
+        assert_eq!(
+            repeated, 0,
+            "nested identity validation discarded the current operation's permissions"
+        );
+        // Fresh data is still required even with permissions already checked.
+        fixture._heap.put(fixture.slot, 0usize);
+        assert!(!session.current());
+    });
+}
+
+#[test]
+fn equipment_without_cloth_retargets_through_first_mapper() {
+    let fixture = NativeTest::new();
+    let equipment = ptr(fixture.slot).unwrap();
+    let item = ptr(equipment + 0x10).unwrap();
+    let exporter = ptr(item + 0x658).unwrap();
+    let holder = ptr(exporter + 0x70).unwrap();
+    let owner = ptr(equipment + 0x130).unwrap();
+    fixture._heap.put(exporter + 0x70, 0usize);
+    fixture._heap.put(equipment + 0x130, 0usize);
+    refresh(fixture.character.address, 1.0, 1);
+    assert_eq!(
+        REGISTRY.read().unwrap().len(),
+        1,
+        "equipment without cloth must bind"
+    );
+    let out = fixture.draw();
+    assert!((out[2][3] - 1.1).abs() < 1e-5);
+    assert!(REGISTRY.read().unwrap()[0].cloth_plan.is_none());
+    assert!(solver_input(fixture.inner, fixture.input + 0x48, fixture.transform).is_none());
+    fixture._heap.put(exporter + 0x70, holder);
+    assert!(!REGISTRY.read().unwrap()[0].key.current(TEST_BASE));
+    refresh(fixture.character.address, 1.0, 2);
+    assert_eq!(REGISTRY.read().unwrap().len(), 1);
+    assert!((fixture.draw()[2][3] - 1.1).abs() < 1e-5);
+    // A cloth owner appearing later must revoke the mesh-only session and
+    // restore the ordinary requirement that physics consumes the target pose.
+    fixture._heap.put(equipment + 0x130, owner);
+    assert!(!REGISTRY.read().unwrap()[0].key.current(TEST_BASE));
+    refresh(fixture.character.address, 1.0, 3);
+    assert_eq!(fixture.draw(), [[99.0; 12]; 4]);
+    let mut input = solver_input(fixture.inner, fixture.input + 0x48, fixture.transform).unwrap();
+    input.context();
+    input.completed();
+    assert!((fixture.draw()[2][3] - 1.1).abs() < 1e-5);
+}
+
+#[test]
+fn empty_mapper_lists_and_unreadable_nonempty_lists_cannot_bind() {
+    let fixture = NativeTest::new();
+    let equipment = ptr(fixture.slot).unwrap();
+    let exporter = ptr(ptr(equipment + 0x10).unwrap() + 0x658).unwrap();
+    let first = ptr(exporter + 0x50).unwrap();
+    fixture._heap.put(equipment + 0x130, 0usize);
+    fixture._heap.put(exporter + 0x50, 0usize);
+    fixture._heap.put(exporter + 0x70, 0usize);
+    refresh(fixture.character.address, 1.0, 1);
+    assert!(REGISTRY.read().unwrap().is_empty());
+    fixture._heap.put(exporter + 0x50, first);
+    fixture._heap.put(exporter + 0x70, 1usize);
+    refresh(fixture.character.address, 1.0, 2);
+    assert!(
+        REGISTRY.read().unwrap().is_empty(),
+        "unreadable list is not an absent list"
+    );
+    fixture._heap.put(exporter + 0x70, 0usize);
+    refresh(fixture.character.address, 1.0, 3);
+    assert_eq!(REGISTRY.read().unwrap().len(), 1);
+}
+
+#[test]
+fn invalid_mesh_counts_do_not_get_cached_as_boneless_models() {
+    let fixture = NativeTest::new();
+    let equipment = ptr(fixture.slot).unwrap();
+    let item = ptr(equipment + 0x10).unwrap();
+    let exporter = ptr(item + 0x658).unwrap();
+    let resource = ptr(item + 0x68).unwrap();
+    fixture._heap.put(exporter + 0x70, 0usize);
+    fixture._heap.put(equipment + 0x130, 0usize);
+    for count in [-1, pose::LIMIT as i32 + 1] {
+        fixture._heap.put(resource + 0x1C, count);
+        refresh(fixture.character.address, 1.0, 1);
+        let native_count = NATIVE.lock().unwrap().len();
+        assert_eq!(native_count, 0);
+        assert!(REGISTRY.read().unwrap().is_empty());
+        assert_eq!(REJECTED.lock().unwrap().len(), 1);
+        suspend();
+    }
+}
+
+#[test]
+fn equipment_without_bones_stays_native_until_resource_changes() {
+    let fixture = NativeTest::new();
+    let equipment = ptr(fixture.slot).unwrap();
+    let item = ptr(equipment + 0x10).unwrap();
+    let exporter = ptr(item + 0x658).unwrap();
+    let resource = ptr(item + 0x68).unwrap();
+    let inverse = ptr(resource + 0x2F8).unwrap();
+    let skeleton = ptr(fixture.mapper + 0x90).unwrap();
+    let bones = ptr(skeleton + 8).unwrap();
+    fixture._heap.put(exporter + 0x70, 0usize);
+    fixture._heap.put(equipment + 0x130, 0usize);
+    fixture._heap.put(resource + 0x1C, 0i32);
+    fixture._heap.put(resource + 0x2F8, 0usize);
+    fixture._heap.put(skeleton + 8, 0usize);
+    refresh(fixture.character.address, 1.0, 1);
+    assert!(REGISTRY.read().unwrap().is_empty());
+    let native_count = NATIVE.lock().unwrap().len();
+    assert_eq!(native_count, 1, "boneless model must cache native behavior");
+    assert!(
+        REJECTED.lock().unwrap().is_empty(),
+        "boneless model must not queue retries"
+    );
+    for frame in 2..362 {
+        refresh(fixture.character.address, 1.0, frame);
+        assert_eq!(NATIVE.lock().unwrap().len(), 1);
+        assert!(REJECTED.lock().unwrap().is_empty());
+    }
+    assert_eq!(fixture.draw(), [[99.0; 12]; 4]);
+    fixture._heap.put(resource + 0x2F8, inverse);
+    fixture._heap.put(skeleton + 8, bones);
+    fixture._heap.put(resource + 0x1C, 4i32);
+    refresh(fixture.character.address, 1.0, 362);
+    assert!(NATIVE.lock().unwrap().is_empty());
+    assert_eq!(REGISTRY.read().unwrap().len(), 1);
+    assert!((fixture.draw()[2][3] - 1.1).abs() < 1e-5);
 }
 impl Heap {
     fn new() -> Self {
@@ -328,17 +657,96 @@ impl Drop for NativeTest {
     }
 }
 
-#[test]
-fn actual_weapon_dummy_route_follows_target_hand_and_rejects_a_rebuilt_record() {
-    let mut fixture = NativeTest::new();
-    refresh(fixture.character.address, 1.0, 1);
-    {
-        let mut sessions = REGISTRY.write().unwrap();
-        Arc::get_mut(&mut sessions[0]).unwrap().motion = Some(MotionProfile {
+// Independent equipped objects and mappers; only their authored body skeleton
+// is shared, as with a matching HD/BD/AM/LG set. No native cloth is needed.
+fn add_matching_part(fixture: &mut NativeTest, slot_index: usize) -> usize {
+    let original = ptr(fixture.slot).unwrap();
+    let original_item = ptr(original + 0x10).unwrap();
+    let original_resource = ptr(original_item + 0x68).unwrap();
+    let original_exporter = ptr(original_item + 0x658).unwrap();
+    let h = &mut fixture._heap;
+    let equipment = h.alloc(0x200);
+    let item = h.alloc(0x800);
+    let resource = h.alloc(0x600);
+    let exporter = h.alloc(0x180);
+    let mapper = h.alloc(0xa0);
+    let holder = h.alloc(8);
+    let inverse = h.alloc(4 * 48);
+    for (from, to, size) in [
+        (original, equipment, 0x200),
+        (original_item, item, 0x800),
+        (original_resource, resource, 0x600),
+        (original_exporter, exporter, 0x180),
+        (fixture.mapper, mapper, 0xa0),
+        (ptr(original_resource + 0x2f8).unwrap(), inverse, 4 * 48),
+    ] {
+        unsafe {
+            std::ptr::copy_nonoverlapping(from as *const u8, to as *mut u8, size);
+        }
+    }
+    h.put(fixture.slot + slot_index * 8, equipment);
+    h.put(equipment + 0x10, item);
+    h.put(equipment + 0x130, 0usize);
+    h.put(item + 0x68, resource);
+    h.put(item + 0x658, exporter);
+    h.put(resource + 0x2f8, inverse);
+    h.put(exporter + 0x100, resource);
+    h.put(exporter + 0x50, holder);
+    h.put(exporter + 0x70, holder);
+    h.put(holder, mapper);
+    resource
+}
+
+fn test_body_profiles() {
+    for session in REGISTRY.write().unwrap().iter_mut() {
+        Arc::get_mut(session).unwrap().motion = Some(MotionProfile {
             leg_ratio: 0.8,
             height_ratio: 0.8,
         });
     }
+}
+
+#[test]
+fn actual_weapon_dummy_route_follows_target_hand_and_rejects_a_rebuilt_record() {
+    weapon_dummy_case(1);
+}
+
+#[test]
+fn multipart_weapon_dummy_follows_target_hand_once() {
+    weapon_dummy_case(4);
+}
+
+#[test]
+fn multipart_attachment_profiles_reject_different_body_at_the_same_motion_ratio() {
+    let mut fixture = NativeTest::new();
+    add_matching_part(&mut fixture, 1);
+    let different = add_matching_part(&mut fixture, 2);
+    let inverse = ptr(different + 0x2f8).unwrap();
+    fixture._heap.put(
+        inverse + 2 * 48,
+        pose::affine_output(DMat4::from_translation(DVec3::X * -1.5)).unwrap(),
+    );
+    refresh(fixture.character.address, 1.0, 1);
+    test_body_profiles();
+    let sessions = REGISTRY.read().unwrap();
+    assert_eq!(sessions.len(), 3);
+    let selected = profile::attachment_sessions(&sessions);
+    assert_eq!(selected.len(), 2, "different arm references were merged");
+    let mut reversed = sessions.clone();
+    reversed.reverse();
+    let reordered = profile::attachment_sessions(&reversed);
+    assert!(Arc::ptr_eq(selected[0], reordered[0]));
+    assert!(Arc::ptr_eq(selected[1], reordered[1]));
+}
+
+fn weapon_dummy_case(parts: usize) {
+    let mut fixture = NativeTest::new();
+    for i in 1..parts {
+        add_matching_part(&mut fixture, i);
+    }
+    refresh(fixture.character.address, 1.0, 1);
+    assert_eq!(REGISTRY.read().unwrap().len(), parts);
+    test_body_profiles();
     let h = &mut fixture._heap;
     let eq = h.alloc(0x180);
     let item = h.alloc(0x800);
@@ -422,6 +830,15 @@ fn actual_weapon_dummy_route_follows_target_hand_and_rejects_a_rebuilt_record() 
             "weapon stayed at original hand: {out:?}"
         );
         assert_eq!([out[0], out[5], out[10]], [1.0; 3]);
+    }
+    if parts > 1 {
+        fixture._heap.put(fixture.slot, 0usize);
+        refresh(fixture.character.address, 1.0, 2);
+        attachments::hook(&mut registers, original as *const () as usize);
+        assert!(
+            (out[12] - 2.1).abs() < 1e-5,
+            "remaining equipment did not take over the grip"
+        );
     }
     fixture._heap.put(record + 4, 0i32);
     attachments::hook(&mut registers, original as *const () as usize);
@@ -905,7 +1322,19 @@ fn overall_scale_conventions_remain_coherent_across_switches_and_suspend_revokes
 
 #[test]
 fn body_dummy_batches_follow_local_body_without_weapons_and_revoke_stale_records() {
+    body_dummy_case(1);
+}
+
+#[test]
+fn multipart_body_dummy_batches_and_nested_weapon_selectors_align_once() {
+    body_dummy_case(4);
+}
+
+fn body_dummy_case(parts: usize) {
     let mut fixture = NativeTest::new();
+    for i in 1..parts {
+        add_matching_part(&mut fixture, i);
+    }
     let h = &mut fixture._heap;
     let model = h.alloc(0x80);
     let item = h.alloc(0x680);
@@ -914,10 +1343,10 @@ fn body_dummy_batches_follow_local_body_without_weapons_and_revoke_stale_records
     let modifier = h.alloc(0x80);
     let animation = h.alloc(0x80);
     let skeleton = h.alloc(0x20);
-    let bones = h.alloc(3 * 64);
-    let worlds = h.alloc(3 * 48);
+    let bones = h.alloc(4 * 64);
+    let worlds = h.alloc(4 * 48);
     let table = h.alloc(0x20);
-    let records = h.alloc(3 * 80);
+    let records = h.alloc(4 * 80);
     let wrapper = h.alloc(0x10);
     unsafe {
         (fixture.character.address as *mut u8)
@@ -930,15 +1359,15 @@ fn body_dummy_batches_follow_local_body_without_weapons_and_revoke_stale_records
     h.put(item + 0x650, provider);
     h.put(provider, TEST_BASE + 0x2B70598);
     h.put(provider + 0x68, table);
-    h.put(table, 3i32);
+    h.put(table, 4i32);
     h.put(table + 8, records);
     h.put(array, TEST_BASE + 0x2B6EB88);
-    h.put(array + 0x68, 3i32);
+    h.put(array + 0x68, 4i32);
     h.put(array + 0x70, worlds);
     h.put(modifier, TEST_BASE + 0x2B708D0);
     h.put(animation, TEST_BASE + 0x2B6F2C8);
     h.put(animation + 0x68, skeleton);
-    h.put(skeleton, 3u16);
+    h.put(skeleton, 4u16);
     h.put(skeleton + 8, bones);
     h.put(wrapper, TEST_BASE + 0x2B753E0);
     h.put(wrapper + 8, array);
@@ -951,12 +1380,21 @@ fn body_dummy_batches_follow_local_body_without_weapons_and_revoke_stale_records
         h.put(holder, value);
         h.put(at, holder);
     }
-    for (i, name) in ["L_UpperArm", "L_Forearm", "L_Hand"].iter().enumerate() {
+    for (i, name) in [
+        "L_UpperArm",
+        "L_Forearm",
+        "L_Hand",
+        "IndependentNativePoint",
+    ]
+    .iter()
+    .enumerate()
+    {
         let text = h.text(name, true);
         h.put(bones + i * 64 + 0x20, text);
         h.put(
             worlds + i * 48,
-            pose::affine_output(DMat4::from_translation(DVec3::X * [0.0, 2.0, 3.0][i])).unwrap(),
+            pose::affine_output(DMat4::from_translation(DVec3::X * [0.0, 2.0, 3.0, 99.0][i]))
+                .unwrap(),
         );
         h.put(
             records + i * 80,
@@ -967,17 +1405,14 @@ fn body_dummy_batches_follow_local_body_without_weapons_and_revoke_stale_records
             DMat4::IDENTITY.to_cols_array().map(|v| v as f32),
         );
     }
+    h.put(bones + 3 * 64 + 0x2c, -1i16);
     refresh(fixture.character.address, 1.0, 1);
-    Arc::get_mut(&mut REGISTRY.write().unwrap()[0])
-        .unwrap()
-        .motion = Some(MotionProfile {
-        leg_ratio: 0.8,
-        height_ratio: 0.8,
-    });
+    assert_eq!(REGISTRY.read().unwrap().len(), parts);
+    test_body_profiles();
     dummies::refresh(&REGISTRY.read().unwrap(), TEST_BASE);
     unsafe extern "C" fn original(_: usize, out: usize, record: usize) -> usize {
         let index = unsafe { ((record + 4) as *const i32).read_unaligned() } as usize;
-        let m = DMat4::from_translation(DVec3::X * [0.0, 2.0, 3.0][index])
+        let m = DMat4::from_translation(DVec3::X * [0.0, 2.0, 3.0, 99.0][index])
             .to_cols_array()
             .map(|v| v as f32);
         unsafe {
@@ -989,6 +1424,17 @@ fn body_dummy_batches_follow_local_body_without_weapons_and_revoke_stale_records
     let mut r: Registers = unsafe { std::mem::zeroed() };
     r.rcx = wrapper as u64;
     r.rdx = out.as_mut_ptr() as u64;
+    let native_queries = crate::memory_query::query_count();
+    r.r8 = (records + 3 * 80) as u64;
+    for _ in 0..120 {
+        dummies::hook(&mut r, original as *const () as usize);
+        assert_eq!(out[12], 99.0, "independent native point must stay native");
+    }
+    let extra_queries = crate::memory_query::query_count() - native_queries;
+    assert_eq!(
+        extra_queries, 0,
+        "unmapped dummy repeatedly validates unrelated pose storage"
+    );
     for _ in 0..20 {
         for (i, x) in [0.0, 0.7, 1.1].into_iter().enumerate() {
             r.r8 = (records + i * 80) as u64;
@@ -1105,6 +1551,15 @@ fn body_dummy_batches_follow_local_body_without_weapons_and_revoke_stale_records
     r.r8 = (records + 160) as u64;
     dummies::hook(&mut r, original as *const () as usize);
     assert!((out[12] - 1.1).abs() < 1e-5);
+    if parts > 1 {
+        h.put(fixture.slot, 0usize);
+        refresh(fixture.character.address, 1.0, 2);
+        dummies::hook(&mut r, original as *const () as usize);
+        assert!(
+            (out[12] - 1.1).abs() < 1e-5,
+            "remaining equipment did not take over body dummies"
+        );
+    }
     h.put(wrapper + 8, 0usize);
     r.r8 = (records + 160) as u64;
     dummies::hook(&mut r, original as *const () as usize);

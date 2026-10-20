@@ -412,15 +412,27 @@ fn actions(r: &mut Record) -> Option<()> {
         } // The original action loop skips null entries.
         let vt = ptr(action)?;
         r.copy("runtime_action_header", i, action, 16)?;
-        if vt == r.identity.base.checked_add(0x329E418)? {
+        if vt
+            == r.identity
+                .base
+                .checked_add(crate::compatibility::rva(0x329E418))?
+        {
             r.copy("game_action_wrapper", i, action, 0x20)?;
             let delegate = ptr(action + 0x18)?;
             let delegate_vt = ptr(delegate)?;
             r.copy("game_action_delegate_header", i, delegate, 16)?;
-            if delegate_vt == r.identity.base.checked_add(0x329E448)? {
+            if delegate_vt
+                == r.identity
+                    .base
+                    .checked_add(crate::compatibility::rva(0x329E448))?
+            {
                 r.copy("game_wind_parameters", i, delegate, 0x98)?;
             }
-        } else if vt == r.identity.base.checked_add(0x2D89CE0)? {
+        } else if vt
+            == r.identity
+                .base
+                .checked_add(crate::compatibility::rva(0x2D89CE0))?
+        {
             r.copy("runtime_simple_wind", i, action, 0x50)?;
         }
     }
@@ -850,8 +862,22 @@ pub(super) fn constraint_end(token: Option<usize>) {
 }
 pub(super) fn compatible(base: usize) -> bool {
     SEAMS.iter().all(|&(rva, raw)| {
-        crate::memory_query::accessible_region(base + rva, raw.len(), false).is_some()
-            && unsafe { std::slice::from_raw_parts((base + rva) as *const u8, raw.len()) == raw }
+        crate::memory_query::accessible_region(
+            base + crate::compatibility::rva(rva),
+            raw.len(),
+            false,
+        )
+        .is_some()
+            && crate::compatibility::matches_code(
+                rva,
+                unsafe {
+                    std::slice::from_raw_parts(
+                        (base + crate::compatibility::rva(rva)) as *const u8,
+                        raw.len(),
+                    )
+                },
+                raw,
+            )
     })
 }
 pub(super) fn install(base: usize) -> bool {
@@ -864,7 +890,7 @@ pub(super) fn install(base: usize) -> bool {
     ] {
         let Ok(hook) = (unsafe {
             hook_closure_retn(
-                base + rva,
+                base + crate::compatibility::rva(rva),
                 callback,
                 CallbackOption::None,
                 HookFlags::empty(),
@@ -877,7 +903,7 @@ pub(super) fn install(base: usize) -> bool {
     for (rva, after) in [(FORCE_BEFORE, false), (FORCE_AFTER, true)] {
         let Ok(hook) = (unsafe {
             hook_closure_jmp_back(
-                base + rva,
+                base + crate::compatibility::rva(rva),
                 move |r| force_observe(after, r),
                 CallbackOption::None,
                 HookFlags::empty(),

@@ -44,14 +44,14 @@ impl Scope {
         if player == 0 || anchor == 0 || base == 0 {
             return result;
         }
-        if read(player) == Some(base + ENEMY_VTABLE_RVA) {
+        if read(player) == Some(base + crate::compatibility::rva(ENEMY_VTABLE_RVA)) {
             return Self::capture_character(player, anchor, base, read);
         }
         let assembly = read(player + 0x648).unwrap_or(0);
         let model = read(player + 0x50).unwrap_or(0);
         if assembly == 0
             || model == 0
-            || read(assembly) != Some(base + ASSEMBLY_VTABLE_RVA)
+            || read(assembly) != Some(base + crate::compatibility::rva(ASSEMBLY_VTABLE_RVA))
             || read(assembly + 8) != Some(model)
         {
             return result;
@@ -63,11 +63,14 @@ impl Scope {
         for index in 0..MODEL_SLOT_COUNT {
             let slot_address = assembly + 0x28 + index * 8;
             let model = read(slot_address).unwrap_or(0);
-            if model == 0 || read(model) != Some(base + EQUIPMENT_VTABLE_RVA) {
+            if model == 0
+                || read(model) != Some(base + crate::compatibility::rva(EQUIPMENT_VTABLE_RVA))
+            {
                 continue;
             }
             let owner = read(model + 0x130).unwrap_or(0);
-            if owner == 0 || read(owner) != Some(base + OWNER_VTABLE_RVA) {
+            if owner == 0 || read(owner) != Some(base + crate::compatibility::rva(OWNER_VTABLE_RVA))
+            {
                 continue;
             }
             let input = read(owner + 0x120).unwrap_or(0);
@@ -76,8 +79,8 @@ impl Scope {
             if input == 0
                 || inner == 0
                 || core == 0
-                || read(input) != Some(base + INPUT_VTABLE_RVA)
-                || read(inner) != Some(base + INNER_VTABLE_RVA)
+                || read(input) != Some(base + crate::compatibility::rva(INPUT_VTABLE_RVA))
+                || read(inner) != Some(base + crate::compatibility::rva(INNER_VTABLE_RVA))
             {
                 continue;
             }
@@ -115,7 +118,9 @@ impl Scope {
         read: impl Fn(usize) -> Option<usize>,
     ) -> Self {
         let model = read(character + 0x50).unwrap_or(0);
-        if model == 0 || read(model) != Some(base + CHARACTER_MODEL_VTABLE_RVA) {
+        if model == 0
+            || read(model) != Some(base + crate::compatibility::rva(CHARACTER_MODEL_VTABLE_RVA))
+        {
             return Self::default();
         }
         let mut scope = Self {
@@ -160,18 +165,18 @@ impl Scope {
             && read(route.slot_address) == Some(route.model)
             && read(route.model)
                 == Some(
-                    base + if self.assembly == 0 {
+                    base + crate::compatibility::rva(if self.assembly == 0 {
                         CHARACTER_MODEL_VTABLE_RVA
                     } else {
                         EQUIPMENT_VTABLE_RVA
-                    },
+                    }),
                 )
             && read(route.model + 0x130) == Some(route.owner)
-            && read(route.owner) == Some(base + OWNER_VTABLE_RVA)
+            && read(route.owner) == Some(base + crate::compatibility::rva(OWNER_VTABLE_RVA))
             && read(route.owner + 0x120) == Some(route.input)
             && read(route.owner + 0x40) == Some(route.inner)
-            && read(route.input) == Some(base + INPUT_VTABLE_RVA)
-            && read(route.inner) == Some(base + INNER_VTABLE_RVA)
+            && read(route.input) == Some(base + crate::compatibility::rva(INPUT_VTABLE_RVA))
+            && read(route.inner) == Some(base + crate::compatibility::rva(INNER_VTABLE_RVA))
             && read(route.inner + 0x30) == Some(route.core)
     }
 
@@ -179,16 +184,17 @@ impl Scope {
         if self.assembly == 0 {
             return self.player != 0
                 && self.player_model != 0
-                && read(self.player) == Some(base + ENEMY_VTABLE_RVA)
+                && read(self.player) == Some(base + crate::compatibility::rva(ENEMY_VTABLE_RVA))
                 && read(self.player + 0x50) == Some(self.player_model)
-                && read(self.player_model) == Some(base + CHARACTER_MODEL_VTABLE_RVA);
+                && read(self.player_model)
+                    == Some(base + crate::compatibility::rva(CHARACTER_MODEL_VTABLE_RVA));
         }
         self.player != 0
             && self.assembly != 0
             && self.player_model != 0
             && read(self.player + 0x648) == Some(self.assembly)
             && read(self.player + 0x50) == Some(self.player_model)
-            && read(self.assembly) == Some(base + ASSEMBLY_VTABLE_RVA)
+            && read(self.assembly) == Some(base + crate::compatibility::rva(ASSEMBLY_VTABLE_RVA))
             && read(self.assembly + 8) == Some(self.player_model)
     }
 }
@@ -203,15 +209,18 @@ mod tests {
             0x100000, 0x20000, 0x30000, 0x40000, 0x50000, 0x60000, 0x70000, 0x80000,
         );
         let mut memory = HashMap::from([
-            (chr, base + ENEMY_VTABLE_RVA),
+            (chr, base + crate::compatibility::rva(ENEMY_VTABLE_RVA)),
             (chr + 0x50, model),
-            (model, base + CHARACTER_MODEL_VTABLE_RVA),
+            (
+                model,
+                base + crate::compatibility::rva(CHARACTER_MODEL_VTABLE_RVA),
+            ),
             (model + 0x130, owner),
-            (owner, base + OWNER_VTABLE_RVA),
+            (owner, base + crate::compatibility::rva(OWNER_VTABLE_RVA)),
             (owner + 0x120, input),
             (owner + 0x40, inner),
-            (input, base + INPUT_VTABLE_RVA),
-            (inner, base + INNER_VTABLE_RVA),
+            (input, base + crate::compatibility::rva(INPUT_VTABLE_RVA)),
+            (inner, base + crate::compatibility::rva(INNER_VTABLE_RVA)),
             (inner + 0x30, core),
         ]);
         let read = |address| {

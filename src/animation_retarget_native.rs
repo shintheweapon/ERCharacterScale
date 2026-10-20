@@ -81,11 +81,7 @@ pub(crate) fn install(base: usize) -> bool {
     if BASE.load(Ordering::Acquire) != 0 {
         return true;
     }
-    let mut guard = vec![0; GUARD.len()];
-    if !read(base + RVA, &mut guard) || guard != GUARD {
-        return false;
-    }
-    if !motion::guard(base) {
+    if !layout_supported(base) {
         return false;
     }
     let Some(directory) = crate::log::sibling_path("skeletons") else {
@@ -114,9 +110,14 @@ pub(crate) fn install(base: usize) -> bool {
         return false;
     }
     let _ = LOADER.set(sender);
-    let Ok(hook) =
-        (unsafe { hook_closure_retn(base + RVA, hook, CallbackOption::None, HookFlags::empty()) })
-    else {
+    let Ok(hook) = (unsafe {
+        hook_closure_retn(
+            base + crate::compatibility::rva(RVA),
+            hook,
+            CallbackOption::None,
+            HookFlags::empty(),
+        )
+    }) else {
         return false;
     };
     let Ok(motion_hook) = (unsafe { motion::install(base) }) else {
@@ -335,7 +336,7 @@ fn prepare(args: Args, cache: &mut Cache) -> Option<Args> {
     let key = (args.skeleton, binding);
     let header: [u8; 0x60] = pose::bytes(&read, binding)?;
     let word = |at| usize::from_le_bytes(header[at..at + 8].try_into().unwrap());
-    if word(0) != BASE.load(Ordering::Acquire) + 0x2D4D2B0 {
+    if word(0) != BASE.load(Ordering::Acquire) + crate::compatibility::rva(0x2D4D2B0) {
         return None;
     }
     if cache
@@ -479,3 +480,16 @@ fn cache_array(plan: &mut ClipPlan, mut args: Args) -> Option<Args> {
 #[cfg(test)]
 #[path = "animation_retarget_native_tests.rs"]
 mod tests;
+
+pub(crate) fn layout_supported(base: usize) -> bool {
+    let mut guard = vec![0; GUARD.len()];
+    if !read(base + crate::compatibility::rva(RVA), &mut guard)
+        || !crate::compatibility::matches_code(RVA, &guard, GUARD)
+    {
+        return false;
+    }
+    if !motion::guard(base) {
+        return false;
+    }
+    true
+}

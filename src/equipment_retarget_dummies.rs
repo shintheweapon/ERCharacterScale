@@ -83,17 +83,17 @@ fn capture(session: Arc<Session>, base: usize) -> Option<Route> {
         Some(v)
     };
     let model = get(session.key.player + 0x50)?;
-    if get(model)? != base + 0x2B35C68 {
+    if get(model)? != base + crate::compatibility::rva(0x2B35C68) {
         return None;
     }
     let item = get(model + 0x10)?;
     let provider = get(item + 0x650)?;
-    if get(provider)? != base + 0x2B70598 {
+    if get(provider)? != base + crate::compatibility::rva(0x2B70598) {
         return None;
     }
     let holder = get(provider + 0x50)?;
     let array = get(holder)?;
-    if get(array)? != base + 0x2B6EB88 {
+    if get(array)? != base + crate::compatibility::rva(0x2B6EB88) {
         return None;
     }
     let worlds = get(array + 0x70)?;
@@ -103,12 +103,12 @@ fn capture(session: Arc<Session>, base: usize) -> Option<Route> {
     }
     let holder = get(array + 0x50)?;
     let modifier = get(holder)?;
-    if get(modifier)? != base + 0x2B708D0 {
+    if get(modifier)? != base + crate::compatibility::rva(0x2B708D0) {
         return None;
     }
     let holder = get(modifier + 0x70)?;
     let animation = get(holder)?;
-    if get(animation)? != base + 0x2B6F2C8 {
+    if get(animation)? != base + crate::compatibility::rva(0x2B6F2C8) {
         return None;
     }
     let skeleton = get(animation + 0x68)?;
@@ -171,12 +171,14 @@ fn capture(session: Arc<Session>, base: usize) -> Option<Route> {
     })
 }
 pub(super) fn refresh(sessions: &[Arc<Session>], base: usize) {
+    let sessions = profile::attachment_sessions(sessions);
     let Ok(mut routes) = ROUTES.lock() else {
         return;
     };
     routes.retain(|r| r.current() && sessions.iter().any(|s| Arc::ptr_eq(s, &r.session)));
-    // Multiple full-body profiles cannot unambiguously own a common body point.
-    let mut eligible = sessions.iter().filter(|s| s.motion.is_some());
+    // Matching multi-part equipment shares one correction. Different body
+    // references still cannot unambiguously own a common body point.
+    let mut eligible = sessions.into_iter();
     let Some(session) = eligible.next() else {
         routes.clear();
         return;
@@ -228,14 +230,18 @@ fn query_hook(registers: *mut Registers, original: usize, affine: bool) -> usize
     ERCS_DUMMY_QUERY_COUNTS[counter].fetch_add(1, Ordering::Relaxed);
     let stride = if affine { 48 } else { 64 };
     let _ = crate::memory_query::scoped(|| -> Option<()> {
+        // Unmapped entries keep the native result. Consult the immutable route
+        // first; only mapped records need fresh ownership/pose validation.
+        let record = route.record(r.r8 as usize)?;
         let base = BASE.load(Ordering::Acquire);
-        if ptr(wrapper) != Some(base + 0x2B753E0) || ptr(wrapper + 8) != Some(array) {
+        if ptr(wrapper) != Some(base + crate::compatibility::rva(0x2B753E0))
+            || ptr(wrapper + 8) != Some(array)
+        {
             return None;
         }
         if !route.current() || !route.session.current() {
             return None;
         }
-        let record = route.record(r.r8 as usize)?;
         let address = r.rdx as usize;
         if !crate::memory_query::accessible_span(address, stride, true)
             || !render_output_is_private(&route.session.key, address, stride)

@@ -5,6 +5,35 @@
 - Diagnostics builds log, once per equipment and reason, why equipment retargeting leaves equipment on the native path.
 - Diagnostics builds also log, once per equipment, each pointer the mapper search reads, showing where a failed search stops.
 - Diagnostics builds name the first failed check when the mesh skeleton of captured equipment cannot be read.
+- The mapper-search trace compares vtables in 1.17.1 offsets, as the mapper search does, so it reads correctly on 1.17.2.
+
+## 2.55.6
+
+- Build with fromsoftware-rs while retaining multipart equipment attachment fixes.
+- Improve weapon, item and body dummy alignment for matching equipment skeletons split across multiple parts.
+- Apply shared attachment correction once and allow remaining matching parts to take over after removal.
+- Offline validation passed; in-game confirmation with the reported models remains pending.
+
+## 2.55.5
+
+- Adapt lock-on camera height and distance to equipment proportions.
+- Preserve equipment proportions when physics poses become invalid and request a bounded native simulation reset. Recovery from intermittent physics failures still needs in-game confirmation.
+
+## 2.55.4
+
+- Fix scaling not activating with early DLL loading, including me3.
+- Retry task-system lookup during startup and stop retrying on shutdown or the startup deadline.
+
+## 2.55.3
+
+- Fix repeated cloth resource processing on native equipment such as the Twinned Armor.
+- Reduce redundant validation in equipment retargeting and body attachment queries.
+
+## 2.55.2
+
+- Support equipment proportion retargeting without cloth physics assets.
+- Keep parts with no bones on the native rendering path without repeated binding attempts.
+- Refresh bindings when optional mapper lists or mesh resources change.
 
 ## 2.55.1
 
